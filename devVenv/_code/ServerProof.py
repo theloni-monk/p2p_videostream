@@ -1,16 +1,13 @@
 from streambase import camera,streamserver
+import cv2
 
 cam = camera.Camera(mirror=True)
 
 def retrieveImage(cam, imgResize):
     """Basic function for retrieving camera data, for getFrame"""
-    cv2.resize(cam.image, (0, 0), fx=imgResize[0], fy=imgResize[1])
-    
-    return image
+    img= cv2.resize(cam.image, (0, 0), fx=imgResize[0], fy=imgResize[1])    
+    return img
 resize_cof = (1,1)  
 server = streamserver.Server(port=5000, verbose=True)
 server.serve()
 server.startStream(retrieveImage, [cam, resize_cof])
-
-#for i in range(10):
-#    cv2.imwrite("test_image.png", cam.image)

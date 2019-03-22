@@ -77,11 +77,6 @@ class Server:
 
         # saving prev frame
         self.prevFrame = img
-        if self.Write:
-            try:
-                self.out.write(img)  # save frame to a video file server side
-            except Exception as e:
-                self.close(e)
 
         # send it
         try:
