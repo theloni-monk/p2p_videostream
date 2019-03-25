@@ -9,46 +9,77 @@ import sys
 import atexit
 
 
-
 class Server:
-    def __init__(self, **kwargs):
+    
+    def __init__(self, incoming_ip, **kwargs):
         self.verbose = kwargs.get("verbose", False)
 
-        print("Initilizing socket")
-        s = socket.socket()
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((kwargs.get("bindto", ""), kwargs.get("port", 8080)))
-        s.listen(10)
-        self.s = s
+        self.port= kwargs.get("port", 8080)
+        self.incoming_ip = incoming_ip
+        self.connected = False
+
         atexit.register(self.close)
         
-        print("Server ready")
+        self.log("Server ready")
 
     def log(self, m):
         """Prints out if verbose"""
         if self.verbose:
             print(m)  # printout if verbose
 
+    def initializeSock(self,sock=None):
+        self.log("Initilizing socket")
+        if not sock:
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((kwargs.get("bindto", ""), port))
+            self.s = s
+            self.s.listen(10)
+        else:
+            self.s = sock
+
     def serve(self):
-        """Find client"""
-        self.log("Searching for client...")
+        """Blocks and waits for client at self.incoming_ip to connect"""
+        self.log("Searching for client at {}...".format(self.incoming_ip))
         while True:
             # wait for client to query the server for a connection
-            self.conn, self.clientAddr = self.s.accept()
-            self.log('Connected to ' +
-                    self.clientAddr[0] + ':' + str(self.clientAddr[1]))
-            return None  # only connects to one client
+            conn, clientAddr = self.s.accept()
+            if clientAddr[0] == self.incoming_ip:
+                self.conn = conn
+                self.clientAddr = clientAddr
+                self.log('Connected to ' +
+                        self.clientAddr[0] + ':' + str(self.clientAddr[1]))
+                return None  # only connects to one client
+            conn.close()
+            self.log('Refused connection to ' +
+                        clientAddr[0] + ':' + str(clientAddr[1]))
 
-    def serveNoBlock(self):
-        """Find client without blocking"""
-        self.log("Searching for client...")
-        self.s.setblocking(0)
-        self.conn, self.clientAddr = self.s.accept() #wait for client to query the server for a connection
-        self.log('Connected to ' + self.clientAddr[0] + ':' + str(self.clientAddr[1]))
-        return None #only connects to one client 
+    def serveNoBlock(self, callback=None):
+        """Without blocking, waits for client at self.incoming_ip to connect, if callback given calls callback with arg True on success or False on failure
+        Returns: False on failure, True on success"""
+        
+        self.log("Searching for client at {}...".format(self.incoming_ip))
+
+        # wait for client to query the server for a connection
+        conn, clientAddr = self.s.accept()
+        if clientAddr[0] == self.incoming_ip:
+            self.conn = conn
+            self.clientAddr = clientAddr
+            self.log('Connected to ' +
+                self.clientAddr[0] + ':' + str(self.clientAddr[1]))
+            if callback:
+                callback(True)
+            return True  # only connects to one client
+        conn.close()
+        self.log("serveNoBlock Failed!")
+        self.log('Refused connection to ' +
+                clientAddr[0] + ':' + str(clientAddr[1]))
+        if callback:
+            callback(False)
+        return False
 
     def initializeStream(self, img):
-        """Sends initial frame of intra-frame compression and preps"""
+        """Sends initial frame of compression and initializes compressor and io"""
         self.Sfile = io.BytesIO()
         self.C = zstandard.ZstdCompressor()
         self.prevFrame = img
@@ -66,8 +97,10 @@ class Server:
             self.prevFrame
         except AttributeError:
             self.initializeStream()
+        
         # instanciate temporary bytearray to send later
         Tfile = io.BytesIO()
+
         # use numpys built in save function to diff with prevframe
         # because we diff it it will compress more
         np.save(Tfile, img-self.prevFrame)
@@ -86,18 +119,6 @@ class Server:
         self.log("Sent {}KB (frame {})".format(int(len(b)/1000), self.frameno))  # debugging
         self.frameno += 1
 
-    def startStream(self, getFrame, args=[]):
-        """ Creates videostream, calls getFrame to recieve new frames, blocking
-        Args:
-            getFrame: Function executed to generate image frame 
-            args: the argumetns passed to the getFrame function
-
-        Returns:
-            void
-        """
-        self.initializeStream(self.fetchFrame(getFrame, args))
-        while True:
-            self.sendFrame(self.fetchFrame(getFrame, args))
 
     def close(self, E=None):
         """Closes socket"""

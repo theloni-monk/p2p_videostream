@@ -9,34 +9,25 @@ import sys
 
 
 class Client:
-    def __init__(self, **kwargs):
+    
+    def __init__(self, target_ip, **kwargs):
 
         self.verbose = kwargs.get("verbose", False)
         
-        #NOTE: soon to be irrelevent
-        self.windowRes = (640, 480)
-        self.windowTitle=kwargs.get("Title","Feed")
-        self.prevFrame = None
+        self.target_ip = target_ip
+        self.target_port = kwargs.get("port", 8080)
 
-        # creates socket
-        self.log("Initializing socket...")
-        self.ip = kwargs.get("serverIp", "localhost")
-        self.s = socket.socket()
-        self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-        # connects via socket to server at provided ip over the provided port
-        self.log("Connecting...")
-        # connect over port
-        self.s.connect((self.ip, kwargs.get("port", 8080)))
-
+        self.connected = False
+        
         # instanciate a decompressor which we can use to decompress our frames
         self.D = zstandard.ZstdDecompressor()
 
         # when the user exits or the stream crashes it closes so there arn't orfaned processes
         atexit.register(self.close)
 
+        self.prevFrame = None
         self.frameno=None
-        self.log("Ready")
+        self.log("Client Ready")
 
     def log(self, m):
         """prints out if verbose"""
@@ -59,10 +50,40 @@ class Client:
                 pass
             else:
                 return data
+    
+    def initializeSock(sock=None):
+        """Setter for self.s socket or makes blank socket"""
+        if not sock:
+            # creates socket
+            self.log("Initializing socket...")
+            self.s = socket.socket()
+            self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((kwargs.get("bindto", ""), port))
+        else:
+            self.s=sock
 
+    def connectSock():
+        """ Connects socket to self.target_ip over self.port
+            returns: True on connection, False on failed connection """
+        #TODO: make encryption handshake
+        self.log("Connecting...")
+        try:
+            self.s.connect((self.target_ip, self.port))
+            self.connected=True
+        except ConnectionRefusedError:
+            self.log("connection refused") 
+            self.connected=False
+            return False
+        return True
+ 
     def initializeStream(self):
-        """Recvs initial frame and preps"""
-        img = np.zeros((3, 3))  # make blank img
+        """Initializes and connects socket if uninitalized and receives initial frame"""
+
+        if not self.s:
+            self.initializeSock() # if socket wasn't created make it now
+        if not self.connected:
+            self.connectSock() # if socket wasn't connected connect now
+
         # initial frame cant use intra-frame compression
         self.prevFrame = np.load(io.BytesIO(
             self.D.decompress(recv_msg(self.s))))
@@ -94,20 +115,6 @@ class Client:
         self.prevFrame = img  # save the frame
 
         return img
-
-    #TODO: deprecate function:
-    def startStream(self):
-        """Decodes files from stream and displays them"""  
-        self.initializeStream() #decode initial frame 
-        cv2.namedWindow(self.windowTitle, cv2.WINDOW_NORMAL)
-
-        while True:
-            img=self.decodeFrame() #decode frame
-
-            cv2.imshow(self.windowTitle, cv2.resize(img, (0, 0), fx=1, fy=1))
-
-            if cv2.waitKey(1) == 27:
-                break  # esc to quit
 
     def close(self, E=None):
         """Closes socket and opencv instances"""
