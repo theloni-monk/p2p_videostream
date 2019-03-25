@@ -35,18 +35,19 @@ class Client:
             print(m)  # printout if server is in verbose mode
 
     def recv(self, size=1024):
+        #NOTE: this just works
         """Recieves a single frame
         args:
             size: how big a frame should be
-                default: 1024
+                default: 1024 
         returns:
             single data frame
         """
         data = bytearray()
         while 1:
-            buffer = self.s.recv(1024)
+            buffer = self.s.recv(size)
             data += buffer
-            if len(buffer) == 1024:
+            if len(buffer) == size:
                 pass
             else:
                 return data
@@ -58,7 +59,7 @@ class Client:
             self.log("Initializing socket...")
             self.s = socket.socket()
             self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((kwargs.get("bindto", ""), port))
+            self.s.bind((kwargs.get("bindto", ""), self.port))
         else:
             self.s=sock
 
