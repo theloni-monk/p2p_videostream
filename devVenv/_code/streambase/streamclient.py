@@ -9,7 +9,7 @@ import sys
 
 
 class Client:
-    
+    """Client class for videostreamer, decodes compressed and diffed images"""
     def __init__(self, target_ip, **kwargs):
 
         self.verbose = kwargs.get("verbose", False)
@@ -30,7 +30,7 @@ class Client:
         self.log("Client Ready")
 
     def log(self, m):
-        """prints out if verbose"""
+        """prints if self.verbose"""
         if self.verbose:
             print(m)  # printout if server is in verbose mode
 
@@ -76,7 +76,7 @@ class Client:
             self.connected=False
             return False
         return True
- 
+
     def initializeStream(self):
         """Initializes and connects socket if uninitalized and receives initial frame"""
 

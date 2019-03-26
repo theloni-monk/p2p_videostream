@@ -10,7 +10,7 @@ import atexit
 
 
 class Server:
-    
+    """Server class for videostreamer, encodes frames and diffs them before sending"""
     def __init__(self, incoming_ip, **kwargs):
         self.verbose = kwargs.get("verbose", False)
 
@@ -87,10 +87,6 @@ class Server:
         send_msg(self.conn, self.C.compress(self.Sfile.getvalue()))
         self.frameno = 0
 
-    def fetchFrame(self, getFrame, args=[]):
-        """Fetches a frame given a function"""
-        return getFrame(*args)
-
     def sendFrame(self, img):
         """Sends single frame with intra-frame compression over an initialized stream"""
         try:
@@ -118,7 +114,6 @@ class Server:
             self.close(e)
         self.log("Sent {}KB (frame {})".format(int(len(b)/1000), self.frameno))  # debugging
         self.frameno += 1
-
 
     def close(self, E=None):
         """Closes socket"""
