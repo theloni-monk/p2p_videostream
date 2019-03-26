@@ -12,48 +12,54 @@ from Queue import Queue
 
 class ServerThread(threading.Thread):
     """Thread that offloads initialization, encoding, and sending frames"""
+
     def __init__(self, vidserver, frameFunc, frameFuncArgs=[]):
         threading.Thread.__init__(self)
-        self.server=vidserver
-        self.getFrame=frameFunc
-        self.getFrameArgs=frameFuncArgs
+        self.server = vidserver
+        self.getFrame = frameFunc
+        self.getFrameArgs = frameFuncArgs
 
     def run(self):
-        Er=None
+        Er = None
         self.server.initializeStream(self.getFrame(self.getFrameArgs))
         while True:
             try:
                 self.server.sendFrame(self.getFrame(self.getFrameArgs))
             except Exception as e:
-                Er=e
+                Er = e
                 break
         throw(Er)
 
+
 class ClientThread(threading.Thread):
     """Thread that offloads initialization, receiving, and decoding frames and puts them in given Queue"""
+
     def __init__(self, vidclient, fQueue):
         threading.Thread.__init__(self)
         self.client = vidclient
         self.fQueue = fQueue
-    
+
     def run(self):
-        Er=None
+        Er = None
         self.clinet.initializeStream()
         while True:
             try:
                 self.fQueue.put(self.client.decodeFrame())
             except Exception as e:
-                Er=e
+                Er = e
                 break
         throw(Er)
 
+
 class VidStreamerData:
     """Wrapper for name, ip, cameraResolution, and orientation"""
+
     def __init__(self):
         self.name = None
         self.ip = None
         self.cameraResolution = None
         self.orientation = None  # usesless for now
+
 
 class VidStreamer:
     """VidStreamer is a wrapper for a client and a server with a control socket to connect to other vistreamers"""
@@ -94,12 +100,11 @@ class VidStreamer:
         self.frameQueue = Queue()
         self.serverThread = None
         self.clientThread = None
-        
+
     def log(self, m):
         """prints if self.verbose"""
         if self.verbose:
             print(m)
-
 
     def connectPartner(timeout=None):
         """blocking, randomly switches between listening and attempting to connect to self.partner_ip with a correct name
@@ -184,7 +189,6 @@ class VidStreamer:
         except Exception as e:
             self.close(Exception("Partner sent Null data for self.pData"))
 
-
     def initComps(self, **kwargs):
         """ initializes the server and client of the vidstreamer and connects them """
 
@@ -197,7 +201,6 @@ class VidStreamer:
         self.CliBase.initializeSock()
         self.CliBase.connectSock()
 
-
     def defaultCamFunc(self):
         """Funcional wrapper for self.cam.image @property"""
         return self.cam.image
@@ -205,15 +208,15 @@ class VidStreamer:
     def beginStreaming(self, getImg=None, args=[]):
         """Starts the server and client threads"""
         if getImg:
-            self.serverThread=ServerThread(self.SerBase,getImg,args)
+            self.serverThread = ServerThread(self.SerBase, getImg, args)
         else:
-            
-            self.serverThread=ServerThread(self.SerBase,defaultCamFunc)
 
-        self.clientThread=ClientThread(self.CliBase, self.frameQueue)
-    
-    #TODO: implement pausing via a listener on another thread
-    #TODO: implement zerorpc here: now the 
+            self.serverThread = ServerThread(self.SerBase, defaultCamFunc)
+
+        self.clientThread = ClientThread(self.CliBase, self.frameQueue)
+
+    # TODO: implement pausing via a listener on another thread
+    # TODO: implement zerorpc here: now the
     def getCurrFrame():
         """Wrapper for framequeue get for zerorpc"""
         return self.frameQueue.get()
@@ -222,9 +225,9 @@ class VidStreamer:
         """Closes all: serverThread, clientThread, controlSock, CliBase, and SerBase"""
         self.serverThread.join()
         self.clientThread.join()
-        
+
         self.controlSock.close()
-        
+
         self.SerBase.close()
         self.CliBase.close()
 
@@ -233,5 +236,3 @@ class VidStreamer:
         else:
             self.log("Stream closed")
         sys.exit(0)
-
-

@@ -6,8 +6,10 @@ from multiprocessing import Process, Pipe
 class Camera:
     def __init__(self, **kwargs):
         self.mirror = kwargs.get("mirror", False)
-        self.cap = cv2.VideoCapture(kwargs.get("device", 0)) #captures from the first webcam it sees by default
-        self.resolution = (self.cap.get(cv2.cv.CAP_PROP_FRAME_WIDTH), self.cap.get(cv2.cv.CAP_PROP_FRAME_HEIGHT))
+        # captures from the first webcam it sees by default
+        self.cap = cv2.VideoCapture(kwargs.get("device", 0))
+        self.resolution = (self.cap.get(cv2.cv.CAP_PROP_FRAME_WIDTH),
+                           self.cap.get(cv2.cv.CAP_PROP_FRAME_HEIGHT))
         self.output = None
         self.paused = False
 
@@ -17,7 +19,8 @@ class Camera:
 
     @property
     def fps(self):
-        return self.cap.get(cv2.cv.CAP_PROP_FPS) #NOTE: unsure if this returns max fps of camera or current fps of camera
+        # NOTE: unsure if this returns max fps of camera or current fps of camera
+        return self.cap.get(cv2.cv.CAP_PROP_FPS)
 
     @property
     def image(self):
@@ -29,6 +32,7 @@ class Camera:
             self.output = img
 
         return img
+
 
 if __name__ == "__main__":
     cam = Camera(mirror=True)

@@ -11,15 +11,16 @@ import atexit
 
 class Server:
     """Server class for videostreamer, encodes frames and diffs them before sending"""
+
     def __init__(self, incoming_ip, **kwargs):
         self.verbose = kwargs.get("verbose", False)
 
-        self.port= kwargs.get("port", 8080)
+        self.port = kwargs.get("port", 8080)
         self.incoming_ip = incoming_ip
         self.connected = False
 
         atexit.register(self.close)
-        
+
         self.log("Server ready")
 
     def log(self, m):
@@ -27,7 +28,7 @@ class Server:
         if self.verbose:
             print(m)  # printout if verbose
 
-    def initializeSock(self,sock=None):
+    def initializeSock(self, sock=None):
         self.log("Initilizing socket")
         if not sock:
             s = socket.socket()
@@ -48,16 +49,16 @@ class Server:
                 self.conn = conn
                 self.clientAddr = clientAddr
                 self.log('Connected to ' +
-                        self.clientAddr[0] + ':' + str(self.clientAddr[1]))
+                         self.clientAddr[0] + ':' + str(self.clientAddr[1]))
                 return None  # only connects to one client
             conn.close()
             self.log('Refused connection to ' +
-                        clientAddr[0] + ':' + str(clientAddr[1]))
+                     clientAddr[0] + ':' + str(clientAddr[1]))
 
     def serveNoBlock(self, callback=None):
         """Without blocking, waits for client at self.incoming_ip to connect, if callback given calls callback with arg True on success or False on failure
         Returns: False on failure, True on success"""
-        
+
         self.log("Searching for client at {}...".format(self.incoming_ip))
 
         # wait for client to query the server for a connection
@@ -66,14 +67,14 @@ class Server:
             self.conn = conn
             self.clientAddr = clientAddr
             self.log('Connected to ' +
-                self.clientAddr[0] + ':' + str(self.clientAddr[1]))
+                     self.clientAddr[0] + ':' + str(self.clientAddr[1]))
             if callback:
                 callback(True)
             return True  # only connects to one client
         conn.close()
         self.log("serveNoBlock Failed!")
         self.log('Refused connection to ' +
-                clientAddr[0] + ':' + str(clientAddr[1]))
+                 clientAddr[0] + ':' + str(clientAddr[1]))
         if callback:
             callback(False)
         return False
@@ -93,7 +94,7 @@ class Server:
             self.prevFrame
         except AttributeError:
             self.initializeStream()
-        
+
         # instanciate temporary bytearray to send later
         Tfile = io.BytesIO()
 
@@ -112,13 +113,14 @@ class Server:
             send_msg(self.conn, b)
         except Exception as e:
             self.close(e)
-        self.log("Sent {}KB (frame {})".format(int(len(b)/1000), self.frameno))  # debugging
+        self.log("Sent {}KB (frame {})".format(
+            int(len(b)/1000), self.frameno))  # debugging
         self.frameno += 1
 
     def close(self, E=None):
         """Closes socket"""
         self.s.close()
-        if(E!=None):
+        if(E != None):
             print("Stream closed on Error\n" + str(E))
         else:
             self.log("Stream closed")
