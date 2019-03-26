@@ -5,7 +5,6 @@ import numpy as np
 import zstandard
 import io
 import atexit
-import sys
 
 
 class Client:
@@ -118,17 +117,18 @@ class Client:
 
         return img
 
-    def close(self, E=None):
+    def close(self, E=None, **kwargs):
         """Closes socket and opencv instances"""
         self.s.close()
+
         if(E != None):
             print("Stream closed on Error\n" + str(E))
         else:
             self.log("Stream closed")
+        
+        if kwargs.get("destroy", False) == True:
+            self.log("Destroying self")
+            del self
 
-        # TODO: write new client window outside of opencv
-        try:
-            cv2.destroyAllWindows()
-        except Exception:
-            pass
-        sys.exit(0)
+        #sys.exit(0)
+

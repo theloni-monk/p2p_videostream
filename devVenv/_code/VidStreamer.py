@@ -73,8 +73,12 @@ class VidStreamer:
         # datastruct setup
         self.data = VidStreamerData()
         self.data.name = self.name
-        self.data.ip = load(
-            urlopen('https://api.ipify.org/?format=json'))['ip']
+        try:
+            self.data.ip = load(
+                urlopen('https://api.ipify.org/?format=json'))['ip']
+        except URLError:
+            throw(Exception("No Internet connection available!"))
+
         self.data.cameraResolution = self.cam.resolution
         self.data.orientation = True  # always horizontal for now
 
@@ -122,13 +126,13 @@ class VidStreamer:
                 self.controlSock = conn
                 self.clientAddr = clientAddr
                 self.log('ControlSock, connected to ' +
-                         self.clientAddr[0] + ':' + str(self.clientAddr[1]))
+                        self.clientAddr[0] + ':' + str(self.clientAddr[1]))
                 self.connected = True
                 return True  # only connects to one client
             # else:
             conn.close()
             self.log('Refused connection to ' +
-                     clientAddr[0] + ':' + str(clientAddr[1]))
+                    clientAddr[0] + ':' + str(clientAddr[1]))
 
             # Attempt to connect a random number of times:
             for i in range(random.randint(5, 10)):
@@ -221,18 +225,21 @@ class VidStreamer:
         """Wrapper for framequeue get for zerorpc"""
         return self.frameQueue.get()
 
-    def close(self, E=None):
+    def close(self, E=None, **kwargs):
         """Closes all: serverThread, clientThread, controlSock, CliBase, and SerBase"""
         self.serverThread.join()
         self.clientThread.join()
 
         self.controlSock.close()
 
-        self.SerBase.close()
-        self.CliBase.close()
+        self.SerBase.close(destroy = True)
+        self.CliBase.close(destroy = True)
 
         if(E != None):
             print("Stream closed on Error\n" + str(E))
         else:
             self.log("Stream closed")
-        sys.exit(0)
+        
+        if kwargs.get("destroy", False) == True:
+            self.log("Deleting self")
+            del self

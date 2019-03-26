@@ -1,11 +1,9 @@
 import socket
 from .netutils import *
-import cv2
 import numpy as np
 import io
 from tempfile import TemporaryFile
 import zstandard
-import sys
 import atexit
 
 
@@ -117,11 +115,14 @@ class Server:
             int(len(b)/1000), self.frameno))  # debugging
         self.frameno += 1
 
-    def close(self, E=None):
+    def close(self, E=None, **kwargs):
         """Closes socket"""
         self.s.close()
         if(E != None):
             print("Stream closed on Error\n" + str(E))
         else:
             self.log("Stream closed")
-        sys.exit(0)
+        #sys.exit(0) #NOTE: watch out for this, don't close unless you have to, you can often just destroy the object
+        if kwargs.get("destroy",False) == True:
+            self.log("Deleting self")
+            del self
