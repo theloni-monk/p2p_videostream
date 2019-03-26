@@ -7,7 +7,7 @@ from json import load
 from urllib.request import urlopen
 # for accessing stream data
 import threading
-from Queue import Queue
+from queue import Queue
 
 
 class ServerThread(threading.Thread):
