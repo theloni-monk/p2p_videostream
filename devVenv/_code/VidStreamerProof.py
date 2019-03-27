@@ -1,7 +1,7 @@
-from ..VidStreamer import *
+import VidStreamer
 import cv2
 
-streamer=VidStreamer("10.50.5.8")
+streamer= VidStreamer.VidStreamer("192.168.0.115")
 streamer.connectPartner()
 streamer.init_infoExchange()
 streamer.initComps()
@@ -14,4 +14,5 @@ while True:
         cv2.imshow("feed", img)
 
         if cv2.waitKey(1) == 27:
+            streamer.close(destroy=True)
             break  # esc to quit

@@ -1,4 +1,7 @@
-from .streambase import *
+from streambase.streamserver import Server
+from streambase.streamclient import Client
+from streambase.camera import Camera
+import socket
 import random
 import time
 import pickle
@@ -8,6 +11,10 @@ from urllib.request import urlopen
 # for accessing stream data
 import threading
 from queue import Queue
+
+#HACK:
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 
 class ServerThread(threading.Thread):
@@ -68,7 +75,7 @@ class VidStreamer:
 
         self.verbose = kwargs.get("verbose", False)
         self.name = kwargs.get("name", "VidBot")
-        self.cam = camera.Camera()
+        self.cam = Camera()
 
         # datastruct setup
         self.data = VidStreamerData()
@@ -76,8 +83,9 @@ class VidStreamer:
         try:
             self.data.ip = load(
                 urlopen('https://api.ipify.org/?format=json'))['ip']
-        except URLError:
-            throw(Exception("No Internet connection available!"))
+        except Exception as e:
+            print(str(e))
+            raise Exception("No Internet connection available!")
 
         self.data.cameraResolution = self.cam.resolution
         self.data.orientation = True  # always horizontal for now
@@ -110,7 +118,7 @@ class VidStreamer:
         if self.verbose:
             print(m)
 
-    def connectPartner(timeout=None):
+    def connectPartner(self, timeout=None):
         """blocking, randomly switches between listening and attempting to connect to self.partner_ip with a correct name
         Returns: False on timeout, True on connection"""
         stime = time.time()
