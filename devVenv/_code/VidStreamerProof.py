@@ -10,7 +10,7 @@ streamer.beginStreaming()
 cv2.namedWindow("feed", cv2.WINDOW_NORMAL)
 
 while True:
-        img=streamer.getCurrFrame
+        img= streamer.getCurrFrame()
         cv2.imshow("feed", img)
 
         if cv2.waitKey(1) == 27:

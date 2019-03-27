@@ -16,7 +16,7 @@ class Server:
         self.port = kwargs.get("port", 8080)
         self.incoming_ip = incoming_ip
         self.connected = False
-
+        self.s = None
         atexit.register(self.close)
 
         self.log("Server ready")

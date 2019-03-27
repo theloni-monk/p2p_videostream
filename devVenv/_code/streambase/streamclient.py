@@ -16,7 +16,7 @@ class Client:
 
         self.target_ip = target_ip
         self.target_port = kwargs.get("port", 8080)
-
+        self.s = None
         self.connected = False
 
         # instanciate a decompressor which we can use to decompress our frames
@@ -52,7 +52,7 @@ class Client:
             else:
                 return data
 
-    def initializeSock(sock=None):
+    def initializeSock(self, sock=None):
         """Setter for self.s socket or makes blank socket"""
         if not sock:
             # creates socket
@@ -63,7 +63,7 @@ class Client:
         else:
             self.s = sock
 
-    def connectSock():
+    def connectSock(self):
         """ Connects socket to self.target_ip over self.port
             returns: True on connection, False on failed connection """
         # TODO: make encryption handshake

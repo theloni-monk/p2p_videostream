@@ -12,7 +12,7 @@ from urllib.request import urlopen
 import threading
 from queue import Queue
 
-#HACK:
+# HACK: this makes the urllib requrest work
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -35,7 +35,7 @@ class ServerThread(threading.Thread):
             except Exception as e:
                 Er = e
                 break
-        throw(Er)
+        raise Er
 
 
 class ClientThread(threading.Thread):
@@ -55,10 +55,10 @@ class ClientThread(threading.Thread):
             except Exception as e:
                 Er = e
                 break
-        throw(Er)
+        raise Er
 
 
-class VidStreamerData:
+class VidStreamerData():
     """Wrapper for name, ip, cameraResolution, and orientation"""
 
     def __init__(self):
@@ -126,21 +126,24 @@ class VidStreamer:
             connected = False
             # Attempt to serve for a random amount of time:
             self.controlSockConnector.listen(10)
-            self.controlSockConnector.settimeout(random.randint(50, 100))
-            conn, clientAddr = self.controlSockConnector.accept()
-
-            # TODO: figure out how to check for the incoming name
-            if clientAddr[0] == self.partner_ip:
-                self.controlSock = conn
-                self.clientAddr = clientAddr
-                self.log('ControlSock, connected to ' +
-                        self.clientAddr[0] + ':' + str(self.clientAddr[1]))
-                self.connected = True
-                return True  # only connects to one client
-            # else:
-            conn.close()
-            self.log('Refused connection to ' +
-                    clientAddr[0] + ':' + str(clientAddr[1]))
+            self.controlSockConnector.settimeout(random.randint(5, 15))
+            conn = None
+            try:
+                conn, clientAddr = self.controlSockConnector.accept()
+            except Exception as e:
+                self.log(e)
+            if conn:  # if it didn't get accepted just move on
+                if clientAddr[0] == self.partner_ip:
+                    self.controlSock = conn
+                    self.clientAddr = clientAddr
+                    self.log('ControlSock, connected to ' +
+                             self.clientAddr[0] + ':' + str(self.clientAddr[1]))
+                    self.connected = True
+                    return True  # only connects to one client
+                # else:
+                conn.close()
+                self.log('Refused connection to ' +
+                         clientAddr[0] + ':' + str(clientAddr[1]))
 
             # Attempt to connect a random number of times:
             for i in range(random.randint(5, 10)):
@@ -166,7 +169,7 @@ class VidStreamer:
         """Recieves a single frame
         args:
             size: how big a frame should be
-                default: 1024 
+                default: 1024
         returns:
             single data frame
         """
@@ -179,11 +182,11 @@ class VidStreamer:
             else:
                 return data
 
-    def init_infoExchange():
+    def init_infoExchange(self):
         """initial info exchange over controlsocket about things like name, resolution, and orientation via VidStreamerData struct"""
         # send self.data
         try:
-            send_msg(self.conn, b)
+            self.send_msg(self.conn, pickle.dump(self.data))
         except Exception as e:
             self.close(e)
         self.log("Sent self.data")
@@ -222,14 +225,13 @@ class VidStreamer:
         if getImg:
             self.serverThread = ServerThread(self.SerBase, getImg, args)
         else:
-
             self.serverThread = ServerThread(self.SerBase, defaultCamFunc)
 
         self.clientThread = ClientThread(self.CliBase, self.frameQueue)
 
     # TODO: implement pausing via a listener on another thread
     # TODO: implement zerorpc here: now the
-    def getCurrFrame():
+    def getCurrFrame(self):
         """Wrapper for framequeue get for zerorpc"""
         return self.frameQueue.get()
 
@@ -240,14 +242,14 @@ class VidStreamer:
 
         self.controlSock.close()
 
-        self.SerBase.close(destroy = True)
-        self.CliBase.close(destroy = True)
+        self.SerBase.close(destroy=True)
+        self.CliBase.close(destroy=True)
 
         if(E != None):
             print("Stream closed on Error\n" + str(E))
         else:
             self.log("Stream closed")
-        
+
         if kwargs.get("destroy", False) == True:
             self.log("Deleting self")
             del self
