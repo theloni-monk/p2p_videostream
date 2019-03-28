@@ -2,7 +2,7 @@
 #from .streambase.streamclient import *
 #from .streambase.camera import Camera
 #from .streambase.netutils import *
-from streambase import *
+from .streambase import *
 import socket
 import random
 import time
@@ -102,7 +102,7 @@ class VidStreamer:
         self.SerBase = streamserver.Server(
             partner_ip, port=self.comm_port, verbose=self.verbose)
 
-        self.controlSockConnector = socket.socket()
+        self.controlSockConnector = socket.socket(socket.AF_INET)
         self.controlSockConnector.setsockopt(
             socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 

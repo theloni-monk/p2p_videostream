@@ -18,7 +18,8 @@ class Server:
         self.connected = False
         self.s = None
         atexit.register(self.close)
-
+        self.error=None
+        self.elevateErrors = kwargs.get("elevateErrors", False)
         self.log("Server ready")
 
     def log(self, m):
@@ -26,12 +27,12 @@ class Server:
         if self.verbose:
             print(m)  # printout if verbose
 
-    def initializeSock(self, sock=None):
+    def initializeSock(self, sock=None, **kwargs):
         self.log("Initilizing socket")
         if not sock:
             s = socket.socket()
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((kwargs.get("bindto", ""), port))
+            s.bind((kwargs.get("bindto", ""), self.port))
             self.s = s
             self.s.listen(10)
         else:
@@ -39,7 +40,10 @@ class Server:
 
     def serve(self):
         """Blocks and waits for client at self.incoming_ip to connect"""
+
         self.log("Searching for client at {}...".format(self.incoming_ip))
+        if not self.s:
+            self.initializeSock()
         while True:
             # wait for client to query the server for a connection
             conn, clientAddr = self.s.accept()
@@ -58,7 +62,8 @@ class Server:
         Returns: False on failure, True on success"""
 
         self.log("Searching for client at {}...".format(self.incoming_ip))
-
+        if not self.s:
+            self.initializeSock()
         # wait for client to query the server for a connection
         conn, clientAddr = self.s.accept()
         if clientAddr[0] == self.incoming_ip:
@@ -110,6 +115,7 @@ class Server:
         try:
             send_msg(self.conn, b)
         except Exception as e:
+            self.log("failed to send message")
             self.close(e)
         self.log("Sent {}KB (frame {})".format(
             int(len(b)/1000), self.frameno))  # debugging
@@ -119,11 +125,16 @@ class Server:
         """Closes socket"""
         if self.s:
             self.s.close()
+
         if(E != None):
+            self.error=E
             print("Stream closed on Error\n" + str(E))
+            if self.elevateErrors:
+                self.log("raising error")
+                raise E
         else:
             self.log("Stream closed")
-        #sys.exit(0) #NOTE: watch out for this, don't close unless you have to, you can often just destroy the object
-        if kwargs.get("destroy",False) == True:
+        
+        if kwargs.get("destroy", False) == True:
             self.log("Deleting self")
             del self

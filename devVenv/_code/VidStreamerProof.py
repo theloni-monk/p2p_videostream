@@ -1,8 +1,8 @@
-import VidStreamer
+from . import VidStreamer
 import cv2
 
 print("test1")
-streamer= VidStreamer.VidStreamer("192.168.0.115")
+streamer= VidStreamer.VidStreamer("localhost")
 streamer.connectPartner()
 streamer.init_infoExchange()
 streamer.initComps()

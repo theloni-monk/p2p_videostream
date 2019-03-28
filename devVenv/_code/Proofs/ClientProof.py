@@ -1,4 +1,4 @@
-from . import streamclient
+from ..streambase import streamclient
 import cv2
 
 demoClient = streamclient.Client("localhost", port=5000, verbose=True)
@@ -15,6 +15,7 @@ def startStream(Cli):
         cv2.imshow("feed", img)
 
         if cv2.waitKey(1) == 27:
+            Cli.close(destroy=True)
             break  # esc to quit
 
 

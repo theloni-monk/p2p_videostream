@@ -15,7 +15,7 @@ class Client:
         self.verbose = kwargs.get("verbose", False)
 
         self.target_ip = target_ip
-        self.target_port = kwargs.get("port", 8080)
+        self.port = kwargs.get("port", 8080)
         self.s = None
         self.connected = False
 
@@ -24,7 +24,7 @@ class Client:
 
         # when the user exits or the stream crashes it closes so there arn't orfaned processes
         atexit.register(self.close)
-
+        self.error=None
         self.prevFrame = None
         self.frameno = None
         self.log("Client Ready")
@@ -52,14 +52,14 @@ class Client:
             else:
                 return data
 
-    def initializeSock(self, sock=None):
+    def initializeSock(self, sock=None, **kwargs):
         """Setter for self.s socket or makes blank socket"""
         if not sock:
             # creates socket
             self.log("Initializing socket...")
             self.s = socket.socket()
             self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.s.bind((kwargs.get("bindto", ""), self.port))
+            #self.s.bind((kwargs.get("bindto", ""), self.port))
         else:
             self.s = sock
 
@@ -123,13 +123,14 @@ class Client:
             self.s.close()
 
         if(E != None):
+            self.error=E
             print("Stream closed on Error\n" + str(E))
+            if kwargs.get("elevateErrors",False):
+                raise E
         else:
             self.log("Stream closed")
         
         if kwargs.get("destroy", False) == True:
             self.log("Destroying self")
             del self
-
-        #sys.exit(0)
 

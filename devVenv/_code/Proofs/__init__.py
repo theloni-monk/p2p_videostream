@@ -1,1 +1,2 @@
-from . import streambase
+from ..streambase import *
+

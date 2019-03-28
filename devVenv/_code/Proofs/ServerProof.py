@@ -1,4 +1,4 @@
-from . import streamserver, camera
+from ..streambase import streamserver, camera
 import cv2
 
 cam = camera.Camera(mirror=True)
@@ -11,12 +11,16 @@ def retrieveImage(cam, imgResize):
 
 
 def startStream(serv, getFrame, args=[]):
-    serv.initializeStream(getFrame(args))
+    serv.initializeStream(getFrame(args[0],args[1]))
     while True:
-        serv.sendFrame(getFrame(args))
+        try:
+                serv.sendFrame(getFrame(args[0],args[1]))
+        except Exception:
+                serv.close(destroy=True)
+                break
 
 
 resize_cof = (1, 1)
-server = streamserver.Server(port=5000, verbose=True)
+server = streamserver.Server("127.0.0.1", port=5000, verbose=True, elevateErrors=True)
 server.serve()
 startStream(server, retrieveImage, [cam, resize_cof])
