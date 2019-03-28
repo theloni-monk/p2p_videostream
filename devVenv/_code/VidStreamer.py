@@ -1,6 +1,8 @@
-from streambase.streamserver import Server
-from streambase.streamclient import Client
-from streambase.camera import Camera
+#from .streambase.streamserver import *
+#from .streambase.streamclient import *
+#from .streambase.camera import Camera
+#from .streambase.netutils import *
+from streambase import *
 import socket
 import random
 import time
@@ -75,7 +77,7 @@ class VidStreamer:
 
         self.verbose = kwargs.get("verbose", False)
         self.name = kwargs.get("name", "VidBot")
-        self.cam = Camera()
+        self.cam = camera.Camera()
 
         # datastruct setup
         self.data = VidStreamerData()
@@ -95,9 +97,9 @@ class VidStreamer:
         self.partner_ip = partner_ip
         self.comm_port = kwargs.get("port", 8080)
 
-        self.CliBase = Client(
+        self.CliBase = streamclient.Client(
             partner_ip, port=self.comm_port, verbose=self.verbose)
-        self.SerBase = Server(
+        self.SerBase = streamserver.Server(
             partner_ip, port=self.comm_port, verbose=self.verbose)
 
         self.controlSockConnector = socket.socket()
@@ -148,8 +150,7 @@ class VidStreamer:
             # Attempt to connect a random number of times:
             for i in range(random.randint(5, 10)):
                 try:
-                    self.controlSockConnector.connect(
-                        (self.partner_ip, self.port))
+                    self.controlSockConnector.connect((self.partner_ip, self.comm_port))
                     connected = True
                 except ConnectionRefusedError:
                     connected = False
@@ -186,7 +187,7 @@ class VidStreamer:
         """initial info exchange over controlsocket about things like name, resolution, and orientation via VidStreamerData struct"""
         # send self.data
         try:
-            self.send_msg(self.conn, pickle.dump(self.data))
+            netutils.send_msg(self.conn, pickle.dump(self.data))
         except Exception as e:
             self.close(e)
         self.log("Sent self.data")
@@ -237,19 +238,25 @@ class VidStreamer:
 
     def close(self, E=None, **kwargs):
         """Closes all: serverThread, clientThread, controlSock, CliBase, and SerBase"""
+        destroy = kwargs.get("destroy", False)
+
         self.serverThread.join()
         self.clientThread.join()
 
         self.controlSock.close()
-
-        self.SerBase.close(destroy=True)
-        self.CliBase.close(destroy=True)
+        try:
+            self.SerBase.close(destroy=True)
+            self.CliBase.close(destroy=True)
+        except AttributeError:
+            if destroy:
+                del self.SerBase
+                del self.CliBase
 
         if(E != None):
             print("Stream closed on Error\n" + str(E))
         else:
             self.log("Stream closed")
 
-        if kwargs.get("destroy", False) == True:
+        if destroy:
             self.log("Deleting self")
             del self

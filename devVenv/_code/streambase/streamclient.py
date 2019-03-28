@@ -119,7 +119,8 @@ class Client:
 
     def close(self, E=None, **kwargs):
         """Closes socket and opencv instances"""
-        self.s.close()
+        if self.s:
+            self.s.close()
 
         if(E != None):
             print("Stream closed on Error\n" + str(E))
