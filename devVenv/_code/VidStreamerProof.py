@@ -1,4 +1,4 @@
-import VidStreamer
+from . import VidStreamer
 import cv2
 
 print("test1")

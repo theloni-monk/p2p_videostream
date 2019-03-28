@@ -1,8 +1,6 @@
 #from .streambase.streamserver import *
 #from .streambase.streamclient import *
-#from .streambase.camera import Camera
-#from .streambase.netutils import *
-from streambase import *
+from .streambase import *
 import socket
 import random
 import time
@@ -50,7 +48,7 @@ class ClientThread(threading.Thread):
 
     def run(self):
         Er = None
-        self.clinet.initializeStream()
+        self.client.initializeStream()
         while True:
             try:
                 self.fQueue.put(self.client.decodeFrame())
@@ -187,7 +185,7 @@ class VidStreamer:
         """initial info exchange over controlsocket about things like name, resolution, and orientation via VidStreamerData struct"""
         # send self.data
         try:
-            netutils.send_msg(self.conn, pickle.dump(self.data))
+            netutils.send_msg(self.controlSock, pickle.dump(self.data))
         except Exception as e:
             self.close(e)
         self.log("Sent self.data")
@@ -209,10 +207,10 @@ class VidStreamer:
         """ initializes the server and client of the vidstreamer and connects them """
 
         if not self.connected:
-            connectPartner(kwargs.get("timeout"), None)
+            self.connectPartner(kwargs.get("timeout", None))
 
         self.SerBase.initializeSock()
-        self.SerBase.ServeNoBlock()
+        self.SerBase.serveNoBlock()
 
         self.CliBase.initializeSock()
         self.CliBase.connectSock()
@@ -226,7 +224,7 @@ class VidStreamer:
         if getImg:
             self.serverThread = ServerThread(self.SerBase, getImg, args)
         else:
-            self.serverThread = ServerThread(self.SerBase, defaultCamFunc)
+            self.serverThread = ServerThread(self.SerBase, self.defaultCamFunc)
 
         self.clientThread = ClientThread(self.CliBase, self.frameQueue)
 

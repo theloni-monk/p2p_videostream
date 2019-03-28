@@ -23,7 +23,7 @@ class Camera():
 
     @property
     def image(self):
-        ret_val, img = self.cap.read()
+        img = self.cap.read()[1]
         if self.mirror:
             img = cv2.flip(img, 1)
         self.output = img
