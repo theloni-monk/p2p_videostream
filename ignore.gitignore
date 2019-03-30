@@ -1,3 +1,11 @@
+# ignore platform dependent files 
+venv/bin/**
+venv/include/**
+
+# Just maintain a requirements file
+venv/lib/**
+venv/pip-selfcheck.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -7,7 +15,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
-.Python
+**/.Python
 build/
 develop-eggs/
 dist/
