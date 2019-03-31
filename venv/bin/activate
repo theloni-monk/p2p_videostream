@@ -40,7 +40,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/thelonious.cooper/Documents/Github/p2p_videostream/venv2"
+VIRTUAL_ENV="/Users/thelonious.cooper/Documents/Github/p2p_videostream/venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
