@@ -1,5 +1,5 @@
 import socket
-from .netutils import *
+from .netutils import recv_msg
 import cv2
 import numpy as np
 import zstandard
@@ -124,11 +124,11 @@ class Client:
 
         if(E != None):
             self.error=E
-            print("Stream closed on Error\n" + str(E))
+            print("Streamclient closed on Error\n" + str(E))
             if kwargs.get("elevateErrors",False):
                 raise E
         else:
-            self.log("Stream closed")
+            self.log("Streamclient closed")
         
         if kwargs.get("destroy", False) == True:
             self.log("Destroying self")

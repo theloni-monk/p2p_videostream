@@ -1,5 +1,5 @@
 import socket
-from .netutils import *
+from .netutils import send_msg
 import numpy as np
 import io
 from tempfile import TemporaryFile
@@ -96,7 +96,7 @@ class Server:
         try:
             self.prevFrame
         except AttributeError:
-            self.initializeStream()
+            self.initializeStream(img)
 
         # instanciate temporary bytearray to send later
         Tfile = io.BytesIO()
@@ -128,12 +128,12 @@ class Server:
 
         if(E != None):
             self.error=E
-            print("Stream closed on Error\n" + str(E))
+            print("Streamserver closed on Error\n" + str(E))
             if self.elevateErrors:
                 self.log("raising error")
                 raise E
         else:
-            self.log("Stream closed")
+            self.log("Streamserver closed")
         
         if kwargs.get("destroy", False) == True:
             self.log("Deleting self")
