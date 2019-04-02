@@ -5,6 +5,7 @@
 		}
 	],
 	"settings": {
-		"python.pythonPath": "devVenv/bin/python3.7"
+		"python.pythonPath": "devVenv/bin/python3.7",
+		"terminal.integrated.drawBoldTextInBrightColors": false
 	}
 }

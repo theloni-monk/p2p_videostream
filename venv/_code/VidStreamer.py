@@ -1,7 +1,3 @@
-#from .streambase.streamserver import *
-#from .streambase.streamclient import *
-#from .streambase.camera import Camera
-#from .streambase.netutils import *
 from .streambase import *
 import socket
 import random
@@ -120,7 +116,7 @@ class VidStreamer:
         if self.verbose:
             print(m)
 
-    def connectPartner(self, timeout=None):
+    def connectPartner(self, timeout = 30):
         """blocking, randomly switches between listening and attempting to connect to self.partner_ip with a correct name
         Returns: False on timeout, True on connection"""
         stime = time.time()
@@ -146,23 +142,26 @@ class VidStreamer:
                 conn.close()
                 self.log('Refused connection to ' +
                          clientAddr[0] + ':' + str(clientAddr[1]))
+            else:
+                # Attempt to connect a random number of times:
+                for i in range(random.randint(5, 10)):
+                    try:
+                        self.controlSockConnector.connect((self.partner_ip, self.comm_port))
+                        connected = True
+                    except ConnectionRefusedError:
+                        connected = False
+                    except OSError:
+                        connected = False
 
-            # Attempt to connect a random number of times:
-            for i in range(random.randint(5, 10)):
-                try:
-                    self.controlSockConnector.connect((self.partner_ip, self.comm_port))
-                    connected = True
-                except ConnectionRefusedError:
-                    connected = False
-
-                if connected:
-                    self.controlSock = self.controlSockConnector
-                    self.connected = True
-                    return True
+                    if connected:
+                        self.controlSock = self.controlSockConnector
+                        self.connected = True
+                        return True
 
             # Check for timeout:
             if timeout:
-                if time.time() > stime + timeout:
+                if time.time() - stime > timeout:
+                    self.log("connectPartner timed out")
                     return False
 
     def cSockRecv(self, size=1024):
@@ -189,6 +188,7 @@ class VidStreamer:
         try:
             netutils.send_msg(self.controlSock, pickle.dump(self.data))
         except Exception as e:
+            self.log("init_infoExchange failed to send data over controlSock")
             self.close(e)
         self.log("Sent self.data")
 
@@ -239,11 +239,11 @@ class VidStreamer:
     def close(self, E=None, **kwargs):
         """Closes all: serverThread, clientThread, controlSock, CliBase, and SerBase"""
         destroy = kwargs.get("destroy", False)
-
-        self.serverThread.join()
-        self.clientThread.join()
-
-        self.controlSock.close()
+        if self.serverThread: self.serverThread.join()
+        if self.clientThread: self.clientThread.join()
+        
+        if self.controlSock: self.controlSock.close()
+        
         try:
             self.SerBase.close(destroy=True)
             self.CliBase.close(destroy=True)

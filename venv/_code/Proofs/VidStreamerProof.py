@@ -1,13 +1,15 @@
-from . import VidStreamer
+from .. import VidStreamer
 import cv2
+import sys
 
-print("test1")
-streamer= VidStreamer.VidStreamer("localhost")
-streamer.connectPartner()
+streamer= VidStreamer.VidStreamer("192.168.0.36", verbose = True)
+if not streamer.connectPartner(): 
+    print("connectPartner failed")
+    sys.exit(0)
 streamer.init_infoExchange()
 streamer.initComps()
 streamer.beginStreaming()
-print("test2")
+print("test1")
 cv2.namedWindow("feed", cv2.WINDOW_NORMAL)
 
 while True:
