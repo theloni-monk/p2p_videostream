@@ -21,6 +21,8 @@ def startStream(serv, getFrame, args=[]):
 
 
 resize_cof = (1, 1)
-server = streamserver.Server("127.0.0.1", port=5000, verbose=True, elevateErrors=True)
+server = streamserver.Server("68.104.5.207", port=5000, verbose=True, elevateErrors=True)
+server.initializeSock()
+server.s.settimeout(15)
 server.serve()
 startStream(server, retrieveImage, [cam, resize_cof])

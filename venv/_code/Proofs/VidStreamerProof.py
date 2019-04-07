@@ -2,7 +2,7 @@ from .. import VidStreamer
 import cv2
 import sys
 
-streamer= VidStreamer.VidStreamer("192.168.0.36", verbose = True)
+streamer= VidStreamer.VidStreamer("10.50.2.254", verbose = True)
 if not streamer.connectPartner(): 
     print("connectPartner failed")
     sys.exit(0)
