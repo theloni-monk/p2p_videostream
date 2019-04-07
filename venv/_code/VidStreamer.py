@@ -3,16 +3,17 @@ import socket
 import random
 import time
 import pickle
+
 # for getting public ip:
 from json import load
 from urllib.request import urlopen
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context # HACK: this makes the urllib requrest work
+
 # for accessing stream data
 import threading
 from queue import Queue
 
-# HACK: this makes the urllib requrest work
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
 
 
 class ServerThread(threading.Thread):
@@ -61,10 +62,23 @@ class VidStreamerData():
 
     def __init__(self):
         self.name = None
-        self.ip = None
+        self.ip_public = None
         self.cameraResolution = None
         self.orientation = None  # usesless for now
 
+DEBUG_0=True
+
+def get_localip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
 
 class VidStreamer:
     """VidStreamer is a wrapper for a client and a server with a control socket to connect to other vistreamers"""
@@ -76,20 +90,21 @@ class VidStreamer:
         self.cam = camera.Camera()
 
         # datastruct setup
-        self.data = VidStreamerData()
-        self.data.name = self.name
+        self.vsData = VidStreamerData()
+        self.vsData.name = self.name
         try:
-            self.data.ip = load(
+            self.vsData.ip_public = load(
                 urlopen('https://api.ipify.org/?format=json'))['ip']
         except Exception as e:
             print(str(e))
             raise Exception("No Internet connection available!")
 
-        self.data.cameraResolution = self.cam.resolution
-        self.data.orientation = True  # always horizontal for now
+        self.vsData.cameraResolution = self.cam.resolution
+        self.vsData.orientation = True  # always horizontal for now
 
         self.pData = None
 
+        self.ip_local=get_localip()
         self.partner_ip = partner_ip
         self.comm_port = kwargs.get("port", 8080)
 
@@ -97,10 +112,6 @@ class VidStreamer:
             partner_ip, port=self.comm_port, verbose=self.verbose)
         self.SerBase = streamserver.Server(
             partner_ip, port=self.comm_port, verbose=self.verbose)
-
-        self.controlSockConnector = socket.socket(socket.AF_INET)
-        self.controlSockConnector.setsockopt(
-            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         self.connected = False
         self.controlSock = None
@@ -115,46 +126,73 @@ class VidStreamer:
         """prints if self.verbose"""
         if self.verbose:
             print(m)
+    
+    def Dlog(self, m):
+        if DEBUG_0: print(m)
 
     def connectPartner(self, timeout = 30):
         """blocking, randomly switches between listening and attempting to connect to self.partner_ip with a correct name
         Returns: False on timeout, True on connection"""
+        
+        csConnector_s = socket.socket(socket.AF_INET)
+        csConnector_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        csConnector_s.bind((self.ip_local), self.comm_port)) 
+        csConnector_s.setblocking(0)
+            
+        csConnector_c = socket.socket(socket.AF_INET)
+        csConnector_c.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        # Attempt to serve for a random amount of time:
+        csConnector_s.listen(10)
+        csConnector_s.settimeout(15)
+
         stime = time.time()
+
+        connected = False
+        conn = None
         while True:
-            connected = False
-            # Attempt to serve for a random amount of time:
-            self.controlSockConnector.listen(10)
-            self.controlSockConnector.settimeout(random.randint(5, 15))
-            conn = None
             try:
-                conn, clientAddr = self.controlSockConnector.accept()
+                conn, clientAddr = csConnector_s.accept()
             except Exception as e:
                 self.log(e)
-            if conn:  # if it didn't get accepted just move on
+        
+            if conn:  # wait for the async connector
                 if clientAddr[0] == self.partner_ip:
-                    self.controlSock = conn
+                    
+                    self.controlSock = conn #FIXME: not sure if this will get destroyed when scope is left
                     self.clientAddr = clientAddr
                     self.log('ControlSock, connected to ' +
                              self.clientAddr[0] + ':' + str(self.clientAddr[1]))
                     self.connected = True
+                    csConnector_c.shutdown()
+                    csConnector_c.close() # not needed
                     return True  # only connects to one client
-                # else:
+                # else implied
                 conn.close()
                 self.log('Refused connection to ' +
                          clientAddr[0] + ':' + str(clientAddr[1]))
-            else:
-                # Attempt to connect a random number of times:
-                for i in range(random.randint(5, 10)):
+                break # serve again
+            
+            #TODO: make sure this works and the partners actually are on the same socket
+            else: # if we haven't gotten a connection servingattempt to connect
+                connectTries = 5 # tuning var
+                for i in range(connectTries):
                     try:
-                        self.controlSockConnector.connect((self.partner_ip, self.comm_port))
-                        connected = True
+                        if not conn:
+                            csConnector_c.connect((self.partner_ip, self.comm_port))
+                            connected = True
                     except ConnectionRefusedError:
+                        self.log("Connection to partner refused")
                         connected = False
-                    except OSError:
+                    except OSError as e: #HACK
+                        self.Dlog("encountered OSError: {}".format(e))
                         connected = False
 
                     if connected:
-                        self.controlSock = self.controlSockConnector
+                        # im worried how quickly this will happen:
+                        csConnector_s.shutdown()
+                        csConnector_s.close() # very important to close this
+                        self.controlSock =  csConnector_c #FIXME: not sure if this will be destroyed
                         self.connected = True
                         return True
 
@@ -162,6 +200,8 @@ class VidStreamer:
             if timeout:
                 if time.time() - stime > timeout:
                     self.log("connectPartner timed out")
+                    csConnector_c.close()
+                    csConnector_s.close()
                     return False
 
     def cSockRecv(self, size=1024):
@@ -186,7 +226,7 @@ class VidStreamer:
         """initial info exchange over controlsocket about things like name, resolution, and orientation via VidStreamerData struct"""
         # send self.data
         try:
-            netutils.send_msg(self.controlSock, pickle.dump(self.data))
+            netutils.send_msg(self.controlSock, pickle.dump(self.vsData))
         except Exception as e:
             self.log("init_infoExchange failed to send data over controlSock")
             self.close(e)
