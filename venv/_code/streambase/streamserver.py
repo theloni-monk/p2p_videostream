@@ -1,8 +1,8 @@
 import socket
 from .netutils import send_msg
 import numpy as np
-import io
-from tempfile import TemporaryFile
+import io #BytesIO object replaces tempfile functionality
+# from tempfile import TemporaryFile
 import zstandard
 import atexit
 
@@ -11,6 +11,7 @@ class Server:
     """Server class for videostreamer, encodes frames and diffs them before sending"""
 
     def __init__(self, incoming_ip, **kwargs):
+        """args: incoming_ip | kwargs: verbose/False, port/8080, elevateErrors/False"""
         self.verbose = kwargs.get("verbose", False)
 
         self.port = kwargs.get("port", 8080)
@@ -41,9 +42,9 @@ class Server:
     def serve(self):
         """Blocks and waits for client at self.incoming_ip to connect"""
 
-        self.log("Searching for client at {}...".format(self.incoming_ip))
         if not self.s:
             self.initializeSock()
+        self.log("Searching for client at {}...".format(self.incoming_ip))
         while True:
             # wait for client to query the server for a connection
             conn, clientAddr = self.s.accept()

@@ -11,7 +11,7 @@ class Client:
     """Client class for videostreamer, decodes compressed and diffed images"""
 
     def __init__(self, target_ip, **kwargs):
-
+        """args: target_ip | kwargs: verbose/False, port/8080, elevateErrors/False"""
         self.verbose = kwargs.get("verbose", False)
 
         self.target_ip = target_ip
@@ -25,6 +25,8 @@ class Client:
         # when the user exits or the stream crashes it closes so there arn't orfaned processes
         atexit.register(self.close)
         self.error=None
+        self.elevateErrors = kwargs.get("elevateErrors", False)
+
         self.prevFrame = None
         self.frameno = None
         self.log("Client Ready")
@@ -125,7 +127,7 @@ class Client:
         if(E != None):
             self.error=E
             print("Streamclient closed on Error\n" + str(E))
-            if kwargs.get("elevateErrors",False):
+            if self.elevateErrors:
                 raise E
         else:
             self.log("Streamclient closed")
