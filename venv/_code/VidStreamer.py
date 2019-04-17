@@ -1,302 +1,343 @@
+# multithreading:
+import threading
+from multiprocessing import Pool  # for async connecting
+from queue import Queue
+
+# streaming:
 from .streambase import *
 import socket
+import pickle
+
+# misc:
 import random
 import time
-import pickle
 
 # for getting public ip:
 from json import load
 from urllib.request import urlopen
 import ssl
-ssl._create_default_https_context = ssl._create_unverified_context # HACK: this makes the urllib requrest work
-
-# for accessing stream data
-import threading
-from queue import Queue
-
+# HACK: this makes the urllib requrest work
+ssl._create_default_https_context = ssl._create_unverified_context
 
 
 class ServerThread(threading.Thread):
-    """Thread that offloads initialization, encoding, and sending frames"""
+	"""Thread that offloads initialization, encoding, and sending frames"""
 
-    def __init__(self, vidserver, frameFunc, frameFuncArgs=[]):
-        threading.Thread.__init__(self)
-        self.server = vidserver
-        self.getFrame = frameFunc
-        self.getFrameArgs = frameFuncArgs
+	def __init__(self, vidserver, frameFunc, frameFuncArgs=[]):
+		threading.Thread.__init__(self)
+		self.server = vidserver
+		self.getFrame = frameFunc
+		self.getFrameArgs = frameFuncArgs
 
-    def run(self):
-        Er = None
-        self.server.initializeStream(self.getFrame(self.getFrameArgs))
-        while True:
-            try:
-                self.server.sendFrame(self.getFrame(self.getFrameArgs))
-            except Exception as e:
-                Er = e
-                break
-        raise Er
+	def run(self):
+		Er = None
+		self.server.initializeStream(self.getFrame(self.getFrameArgs))
+		while True:
+			try:
+				self.server.sendFrame(self.getFrame(self.getFrameArgs))
+			except Exception as e:
+				Er = e
+				break
+		raise Er
 
 
 class ClientThread(threading.Thread):
-    """Thread that offloads initialization, receiving, and decoding frames and puts them in given Queue"""
+	"""Thread that offloads initialization, receiving, and decoding frames and puts them in given Queue"""
 
-    def __init__(self, vidclient, fQueue):
-        threading.Thread.__init__(self)
-        self.client = vidclient
-        self.fQueue = fQueue
+	def __init__(self, vidclient, fQueue):
+		threading.Thread.__init__(self)
+		self.client = vidclient
+		self.fQueue = fQueue
 
-    def run(self):
-        Er = None
-        self.client.initializeStream()
-        while True:
-            try:
-                self.fQueue.put(self.client.decodeFrame())
-            except Exception as e:
-                Er = e
-                break
-        raise Er
+	def run(self):
+		Er = None
+		self.client.initializeStream()
+		while True:
+			try:
+				self.fQueue.put(self.client.decodeFrame())
+			except Exception as e:
+				Er = e
+				break
+		raise Er
 
 
-class VidStreamerData():
-    """Wrapper for name, ip, cameraResolution, and orientation"""
+class VSMetaData():
+	"""Wrapper for name, ip, cameraResolution, and orientation"""
 
-    def __init__(self):
-        self.name = None
-        self.ip_public = None
-        self.cameraResolution = None
-        self.orientation = None  # usesless for now
+	def __init__(self):
+		self.name = None
+		self.ip_public = None
+		self.cameraResolution = None
+		self.orientation = None  # usesless for now
 
-DEBUG_0=True
+
+_DEBUG_0 = True
+
 
 def get_localip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # doesn't even have to be reachable
-        s.connect(('10.255.255.255', 1))
-        IP = s.getsockname()[0]
-    except:
-        IP = '127.0.0.1'
-    finally:
-        s.close()
-    return IP
+	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	try:
+		# doesn't even have to be reachable
+		s.connect(('10.255.255.255', 1))
+		IP = s.getsockname()[0]
+	except:
+		IP = '127.0.0.1'
+	finally:
+		s.close()
+	return IP
+
 
 class VidStreamer:
-    """VidStreamer is a wrapper for a client and a server with a control socket to connect to other vistreamers"""
+	"""VidStreamer is a wrapper for a client and a server with a control socket to connect to other vistreamers"""
 
-    def __init__(self, partner_ip, **kwargs):
+	def __init__(self, partner_ip, **kwargs):
 
-        self.verbose = kwargs.get("verbose", False)
-        self.name = kwargs.get("name", "VidBot")
-        self.cam = camera.Camera()
+		self.verbose = kwargs.get("verbose", False)
+		self.name = kwargs.get("name", "VidBot")
+		self.cam = camera.Camera()
 
-        # datastruct setup
-        self.vsData = VidStreamerData()
-        self.vsData.name = self.name
-        try:
-            self.vsData.ip_public = load(
-                urlopen('https://api.ipify.org/?format=json'))['ip']
-        except Exception as e:
-            print(str(e))
-            raise Exception("No Internet connection available!")
+		# metadata setup
+		self.selfMetaData = VSMetaData()
+		self.selfMetaData.name = self.name
+		try:
+			self.selfMetaData.ip_public = load(
+				urlopen('https://api.ipify.org/?format=json'))['ip']
+		except Exception as e:
+			print(str(e))
+			raise Exception("No Internet connection available!")
 
-        self.vsData.cameraResolution = self.cam.resolution
-        self.vsData.orientation = True  # always horizontal for now
+		self.selfMetaData.cameraResolution = self.cam.resolution
+		self.selfMetaData.orientation = True  # always horizontal for now
 
-        self.pData = None
+		self.pMetaData = None
 
-        self.ip_local=get_localip()
-        self.partner_ip = partner_ip
-        self.comm_port = kwargs.get("port", 8080)
+		self.ip_local = get_localip()
+		self.log("public ip: {}, local ip: {}".format(
+			self.selfMetaData.ip_public, self.ip_local))
+		self.partner_ip = partner_ip
+		self.comm_port = kwargs.get("port", 8080)
 
-        self.CliBase = streamclient.Client(
-            partner_ip, port=self.comm_port, verbose=self.verbose)
-        self.SerBase = streamserver.Server(
-            partner_ip, port=self.comm_port, verbose=self.verbose)
+		# TODO: support multiple decoders
+		self.CliBase = streamclient.Client(
+			partner_ip, port=self.comm_port, verbose=self.verbose)
 
-        self.connected = False
-        self.controlSock = None
+		# TODO: support sending to multiple clients
+		self.SerBase = streamserver.Server(
+			partner_ip, port=self.comm_port, verbose=self.verbose)
 
-        self.isPaused = False
 
-        self.frameQueue = Queue()
-        self.serverThread = None
-        self.clientThread = None
+		# TODO: support control command listening
+		# self.isPaused = False  # NOTE: we can just keep streaming the same pause image
 
-    def log(self, m):
-        """prints if self.verbose"""
-        if self.verbose:
-            print(m)
-    
-    def Dlog(self, m):
-        if DEBUG_0: print(m)
+		# TODO: support multiple clients
+		self.controlSock = None
+		self.serverThread = None
+		self.clientThread = None
+		self.frameQueue = Queue()
 
-    def connectPartner(self, timeout = 30):
-        """blocking, randomly switches between listening and attempting to connect to self.partner_ip with a correct name
-        Returns: False on timeout, True on connection"""
-        
-        csConnector_s = socket.socket(socket.AF_INET)
-        csConnector_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        csConnector_s.bind((self.ip_local), self.comm_port)) 
-        csConnector_s.setblocking(0)
-            
-        csConnector_c = socket.socket(socket.AF_INET)
-        csConnector_c.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+	def log(self, m):
+		"""prints if self.verbose"""
+		if self.verbose:
+			print(m)
 
-        # Attempt to serve for a random amount of time:
-        csConnector_s.listen(10)
-        csConnector_s.settimeout(15)
+	def Dlog(self, m):
+		if _DEBUG_0:
+			print(m)
 
-        stime = time.time()
+	def connectPartner(self, timeout=30):
+		"""blocking, randomly switches between listening and attempting to connect to self.partner_ip | 
+		Returns: False on timeout, True on connection"""
+		self.log("connectPartner called!")
+		csConnector_s = socket.socket(socket.AF_INET)
+		csConnector_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		csConnector_s.bind((self.ip_local, self.comm_port))
 
-        connected = False
-        conn = None
-        while True:
-            try:
-                conn, clientAddr = csConnector_s.accept()
-            except Exception as e:
-                self.log(e)
-        
-            if conn:  # wait for the async connector
-                if clientAddr[0] == self.partner_ip:
-                    
-                    self.controlSock = conn #FIXME: not sure if this will get destroyed when scope is left
-                    self.clientAddr = clientAddr
-                    self.log('ControlSock, connected to ' +
-                             self.clientAddr[0] + ':' + str(self.clientAddr[1]))
-                    self.connected = True
-                    csConnector_c.shutdown()
-                    csConnector_c.close() # not needed
-                    return True  # only connects to one client
-                # else implied
-                conn.close()
-                self.log('Refused connection to ' +
-                         clientAddr[0] + ':' + str(clientAddr[1]))
-                break # serve again
-            
-            #TODO: make sure this works and the partners actually are on the same socket
-            else: # if we haven't gotten a connection servingattempt to connect
-                connectTries = 5 # tuning var
-                for i in range(connectTries):
-                    try:
-                        if not conn:
-                            csConnector_c.connect((self.partner_ip, self.comm_port))
-                            connected = True
-                    except ConnectionRefusedError:
-                        self.log("Connection to partner refused")
-                        connected = False
-                    except OSError as e: #HACK
-                        self.Dlog("encountered OSError: {}".format(e))
-                        connected = False
+		csConnector_c = socket.socket(socket.AF_INET)
+		csConnector_c.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-                    if connected:
-                        # im worried how quickly this will happen:
-                        csConnector_s.shutdown()
-                        csConnector_s.close() # very important to close this
-                        self.controlSock =  csConnector_c #FIXME: not sure if this will be destroyed
-                        self.connected = True
-                        return True
+		csConnector_s.listen(10)
+		csConnector_s.setblocking(0)  # set the socket to non-blocking
 
-            # Check for timeout:
-            if timeout:
-                if time.time() - stime > timeout:
-                    self.log("connectPartner timed out")
-                    csConnector_c.close()
-                    csConnector_s.close()
-                    return False
+		stime = time.time() # for chekcing for timeout
 
-    def cSockRecv(self, size=1024):
-        # NOTE: this just works
-        """Recieves a single frame
-        args:
-            size: how big a frame should be
-                default: 1024
-        returns:
-            single data frame
-        """
-        data = bytearray()
-        while 1:
-            buffer = self.controlSock.recv(size)
-            data += buffer
-            if len(buffer) == size:
-                pass
-            else:
-                return data
+		conn = None
+		clientAddr = None
+		pool = Pool(processes=1)
+		while True:
+			try:
+				accept_ret = pool.apply_async(csConnector_s.accept, ())  # accept async HOPEFULLY
+			except Exception as e:
+				self.log(e)
+			self.log("serving")
 
-    def init_infoExchange(self):
-        """initial info exchange over controlsocket about things like name, resolution, and orientation via VidStreamerData struct"""
-        # send self.data
-        try:
-            netutils.send_msg(self.controlSock, pickle.dump(self.vsData))
-        except Exception as e:
-            self.log("init_infoExchange failed to send data over controlSock")
-            self.close(e)
-        self.log("Sent self.data")
+			# TODO: make sure this works and the partners actually are on the same socket
+			while True:
+				if time.time() < stime + timeout:
+					return False # return false on timeout
 
-        try:
-            self.pData = pickle.load(self.cSockRecv())
-        except Exception as e:
-            self.close(e)
-        self.log("Recieved self.pData")
+				waittime = random.randint(1, 150)/10
+				# wait for a random amount of time 
+				# TODO: waittime should be more precise and computer specific
+				wtime_end = time.time()+waittime
+				while time.time() < wtime_end:
+					pass
 
-        # check if data is null:
-        try:
-            if len(self.pData) == 0:
-                pass
-        except Exception as e:
-            self.close(Exception("Partner sent Null data for self.pData"))
+				self.log("checking server for connection")
+				serverReached=False
+				try:
+					serverReached = accept_ret.successful()  # see if the server was connected to
+				except Exception:
+					pass
+				if serverReached:
+					conn, clientAddr = accept_ret.get()
+					break
+				
+				# if the server wasn't reached try to connect to the partner
+				self.log("attempting connection")
+				connected = False
+				try:
+					csConnector_c.connect((self.partner_ip, self.comm_port))
+					connected = True
 
-    def initComps(self, **kwargs):
-        """ initializes the server and client of the vidstreamer and connects them """
+				except ConnectionRefusedError:
+					self.log("Connection to partner refused")
+					connected = False
+				except OSError as e:  # HACK
+					self.Dlog("encountered OSError: {}".format(e))
+					connected = False
 
-        if not self.connected:
-            self.connectPartner(kwargs.get("timeout", None))
+				if connected and not conn:
+					csConnector_s.close()  # very important to close this
+					self.controlSock = csConnector_c  # FIXME: not sure if this will be destroyed
+					self.log("connectPartner success via connect!")
+					return True
 
-        self.SerBase.initializeSock()
-        self.SerBase.serveNoBlock()
+			if conn:  # if we got here it means the server was reached so the if is redundent but its more readable this way
+				self.log("server reached")
+				if clientAddr[0] == self.partner_ip: # make sure we actually connect to our partner
 
-        self.CliBase.initializeSock()
-        self.CliBase.connectSock()
+					self.controlSock = conn  # FIXME: not sure if this will get destroyed when scope is left
+					self.clientAddr = clientAddr
+					self.log('ControlSock, connected to ' +
+							 self.clientAddr[0] + ':' + str(self.clientAddr[1]))
+					self.connected = True
+					csConnector_c.close()  # close open sockets
+					self.log("connectPartner success via serving!")
+					return True  # only connects to one client
 
-    def defaultCamFunc(self):
-        """Funcional wrapper for self.cam.image @property"""
-        return self.cam.image
+				# else implied
+				conn.close()
+				self.log('Refused connection to ' +
+						 clientAddr[0] + ':' + str(clientAddr[1]))
+				# this will return it to the top where it will do an async accept call again
 
-    def beginStreaming(self, getImg=None, args=[]):
-        """Starts the server and client threads"""
-        if getImg:
-            self.serverThread = ServerThread(self.SerBase, getImg, args)
-        else:
-            self.serverThread = ServerThread(self.SerBase, self.defaultCamFunc)
+	# TODO: create control command listener thread.
+	# TODO: make use client csock
+	def cSockRecv(self, size=1024):
+		# NOTE: this just works
+		"""Recieves a single frame
+		args:
+				size: how big a frame should be
+						default: 1024
+		returns:
+				single data frame
+		"""
+		data = bytearray()
+		while 1:
+			buffer = self.controlSock.recv(size)
+			data += buffer
+			if len(buffer) == size:
+				pass
+			else:
+				return data
 
-        self.clientThread = ClientThread(self.CliBase, self.frameQueue)
+	def cSockSend(self, message):
+		# this is wrapper is basically only just so that this can be more readable
+		netutils.send_msg(self.controlSock, message)
 
-    # TODO: implement pausing via a listener on another thread
-    # TODO: implement zerorpc here: now the
-    def getCurrFrame(self):
-        """Wrapper for framequeue get for zerorpc"""
-        return self.frameQueue.get()
 
-    def close(self, E=None, **kwargs):
-        """Closes all: serverThread, clientThread, controlSock, CliBase, and SerBase"""
-        destroy = kwargs.get("destroy", False)
-        if self.serverThread: self.serverThread.join()
-        if self.clientThread: self.clientThread.join()
-        
-        if self.controlSock: self.controlSock.close()
-        
-        try:
-            self.SerBase.close(destroy=True)
-            self.CliBase.close(destroy=True)
-        except AttributeError:
-            if destroy:
-                del self.SerBase
-                del self.CliBase
+	def init_infoExchange(self):
+		"""initial info exchange over controlsocket about things like name, resolution, and orientation via VidStreamerData struct"""
+		# send metadata about self
+		try:
+			# pickle.dumps serializes into a byte object instead of a file
+			self.cSockSend(pickle.dumps(self.selfMetaData))
+		except Exception as e:
+			self.log("init_infoExchange failed to send data over controlSock")
+			raise e
 
-        if(E != None):
-            print("Stream closed on Error\n" + str(E))
-        else:
-            self.log("Stream closed")
+		self.log("Sent self.data")
 
-        if destroy:
-            self.log("Deleting self")
-            del self
+		# recieve partner metadata
+		try:
+			# unserialize recieved metadata
+			self.pMetaData = pickle.loads(self.cSockRecv())
+		except Exception as e:
+			raise e
+		self.log("Recieved self.pData")
+
+		# check if data is null:
+		try:
+			if len(self.pMetaData) == 0:
+				pass
+		except Exception as e:
+			self.close(Exception("Partner sent Null data for self.pData"))
+
+	def initComps(self, **kwargs):
+		""" initializes the server and client of the vidstreamer and connects them """
+
+		if not self.connected:
+			self.connectPartner(kwargs.get("timeout", None))
+
+		self.SerBase.initializeSock()
+		self.SerBase.serveNoBlock()
+
+		self.CliBase.initializeSock()
+		self.CliBase.connectSock()
+
+	def defaultCamFunc(self):
+		"""Funcional wrapper for self.cam.image @property"""
+		return self.cam.image
+
+	def beginStreaming(self, getImg=None, args=[]):
+		"""Starts the server and client threads"""
+		if getImg:
+			self.serverThread = ServerThread(self.SerBase, getImg, args)
+		else:
+			self.serverThread = ServerThread(self.SerBase, self.defaultCamFunc)
+
+		self.clientThread = ClientThread(self.CliBase, self.frameQueue)
+
+	# TODO: implement pausing via a listener on another thread
+	# TODO: implement zerorpc here:
+	def getCurrFrame(self):
+		"""Wrapper for framequeue get for zerorpc"""
+		return self.frameQueue.get()
+
+	def close(self, E=None, **kwargs):
+		"""Closes all: serverThread, clientThread, controlSock, CliBase, and SerBase"""
+		destroy = kwargs.get("destroy", False)
+		if self.serverThread:
+			self.serverThread.join()
+		if self.clientThread:
+			self.clientThread.join()
+
+		if self.controlSock:
+			self.controlSock.close()
+
+		try:
+			self.SerBase.close(destroy=True)
+			self.CliBase.close(destroy=True)
+		except AttributeError:
+			if destroy:
+				del self.SerBase
+				del self.CliBase
+
+		if(E != None):
+			print("Stream closed on Error\n" + str(E))
+		else:
+			self.log("Stream closed")
+
+		if destroy:
+			self.log("Deleting self")
+			del self
