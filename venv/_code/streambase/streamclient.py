@@ -58,7 +58,7 @@ class Client:
         """Setter for self.s socket or makes blank socket"""
         if not sock:
             # creates socket
-            self.log("Initializing socket...")
+            self.log("streamclient initializing socket...")
             self.s = socket.socket()
             self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             #self.s.bind((kwargs.get("bindto", ""), self.port))
@@ -69,7 +69,7 @@ class Client:
         """ Connects socket to self.target_ip over self.port
             returns: True on connection, False on failed connection """
         # TODO: make encryption handshake
-        self.log("Connecting...")
+        self.log("streamclient connecting to server...")
         try:
             self.s.connect((self.target_ip, self.port))
             self.connected = True

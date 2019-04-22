@@ -18,6 +18,8 @@ class Server:
         self.incoming_ip = incoming_ip
         self.connected = False
         self.s = None
+        self.conn = "hello"
+        self.clientAddr = "clownFish"
         atexit.register(self.close)
         self.error=None
         self.elevateErrors = kwargs.get("elevateErrors", False)
@@ -29,7 +31,7 @@ class Server:
             print(m)  # printout if verbose
 
     def initializeSock(self, sock=None, **kwargs):
-        self.log("Initilizing socket")
+        self.log("streamserver initilizing socket")
         if not sock:
             s = socket.socket()
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -39,21 +41,24 @@ class Server:
         else:
             self.s = sock
 
-    def serve(self):
+    def serve(self, asy = False):
         """Blocks and waits for client at self.incoming_ip to connect"""
-
         if not self.s:
             self.initializeSock()
-        self.log("Searching for client at {}...".format(self.incoming_ip))
+        self.log("streamserver Searching for client at {}...".format(self.incoming_ip))
         while True:
             # wait for client to query the server for a connection
             conn, clientAddr = self.s.accept()
             if clientAddr[0] == self.incoming_ip:
                 self.conn = conn
+                print(self.conn)
                 self.clientAddr = clientAddr
-                self.log('Connected to ' +
+                self.log('streamserver connected to ' +
                          self.clientAddr[0] + ':' + str(self.clientAddr[1]))
-                return None  # only connects to one client
+                
+                if asy: return clientAddr, conn # HACK FOR ASYNC 
+                return None  
+
             conn.close()
             self.log('Refused connection to ' +
                      clientAddr[0] + ':' + str(clientAddr[1]))
