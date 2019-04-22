@@ -1,7 +1,8 @@
 # multithreading:
 import threading
 from queue import Queue
-from multiprocessing import Pool  # for async connecting
+from multiprocessing import Pool # for async connecting
+# NOTE: it would be better to use a ThreadPool but python is dumb and ThreadPool still isn't fully implemnted or documented
 
 # streaming:
 from .streambase import *
@@ -19,11 +20,18 @@ import ssl
 # HACK: this makes the urllib requrest work
 ssl._create_default_https_context = ssl._create_unverified_context
 
+_DEBUG_0 = True
+
+def _dlog(m):
+	if _DEBUG_0:
+		print(m)
+
 
 class ServerThread(threading.Thread):
 	"""Thread that offloads initialization, encoding, and sending frames"""
 
-	def __init__(self, vidserver, frameFunc, frameFuncArgs=[]):
+	def __init__(self, vidserver, frameFunc, frameFuncArgs=None):
+		_dlog("TestST")
 		threading.Thread.__init__(self)
 		self.server = vidserver
 		self.getFrame = frameFunc
@@ -31,10 +39,16 @@ class ServerThread(threading.Thread):
 
 	def run(self):
 		Er = None
-		self.server.initializeStream(self.getFrame(self.getFrameArgs))
+		_dlog("serverThread begun running")
+
+		# self.getFrame(self.getFrameArgs) is ugly but is how we get camera images
+		self.server.initializeStream(self.getFrame(self.getFrameArgs)) 
+
+		_dlog("server in serverThread initialized")
 		while True:
 			try:
-				self.server.sendFrame(self.getFrame(self.getFrameArgs))
+				
+				self.server.sendFrame(self.getFrame(self.getFrameArgs)) 
 			except Exception as e:
 				Er = e
 				break
@@ -45,13 +59,16 @@ class ClientThread(threading.Thread):
 	"""Thread that offloads initialization, receiving, and decoding frames and puts them in given Queue"""
 
 	def __init__(self, vidclient, fQueue):
+		_dlog("TestCT")
 		threading.Thread.__init__(self)
 		self.client = vidclient
 		self.fQueue = fQueue
 
 	def run(self):
 		Er = None
+		_dlog("clientthread began running")
 		self.client.initializeStream()
+		_dlog("client in clientThread initialized")
 		while True:
 			try:
 				self.fQueue.put(self.client.decodeFrame())
@@ -71,9 +88,6 @@ class VSMetaData():
 		self.orientation = None  # usesless for now
 
 
-_DEBUG_0 = True
-
-
 def get_localip():
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	try:
@@ -85,7 +99,6 @@ def get_localip():
 	finally:
 		s.close()
 	return IP
-
 
 class VidStreamer:
 	"""VidStreamer is a wrapper for a client and a server with a control socket to connect to other vistreamers"""
@@ -140,10 +153,6 @@ class VidStreamer:
 		if self.verbose:
 			print(m)
 
-	def Dlog(self, m):
-		if _DEBUG_0:
-			print(m)
-
 	def connectPartner(self, timeout=30):
 		"""blocking, randomly switches between listening and attempting to connect to self.partner_ip | 
 		Returns: False on timeout, True on connection"""
@@ -162,7 +171,7 @@ class VidStreamer:
 
 		conn = None
 		clientAddr = None
-		pool = Pool(processes=2)
+		pool = Pool(processes=1)
 		while True:
 			serverReached=False
 			try:
@@ -171,32 +180,37 @@ class VidStreamer:
 			except Exception as e:
 				self.log(e)
 				raise e
-			self.log("serving")
+
+			self.log("VidStreamer control sock connector serving")
 
 			serverReached=False
 			while True:
+
 				if time.time() > stime + timeout:
 					self.log("timed out")
 					return False # return false on timeout
 
-				waittime = random.randint(1, 150)/10
-				# wait for a random amount of time 
-				# TODO: waittime should be more precise and computer specific
-				wtime_end = time.time()+waittime
-				while time.time() < wtime_end:
-					pass
-
-				self.log("checking server for connection")
+				self.log("VidStreamer control sock connector checking server for connection")
 				try:
 					serverReached = accept_ret.successful()  # see if the server was connected to
 				except Exception:
 					pass
 				if serverReached:
 					conn, clientAddr = accept_ret.get()
-					break # exit to the 
+					break # exit to the server logic
+
+
+				# wait for a random amount of time 
+				# TODO: waittime should be more precise and computer specific
+				waittime = random.randint(1, 150)/10	
+				wtime_end = time.time()+waittime
+				self.log("VidStreamer control sock connector waiting")
+				while time.time() < wtime_end:
+					pass
+
 				
 				# if the server wasn't reached try to connect to the partner
-				self.log("attempting connection")
+				self.log("VidStreamer control sock connector attempting connection")
 				connected = False
 
 				try:
@@ -207,14 +221,17 @@ class VidStreamer:
 						self.log("Connection to partner refused")
 						connected = False
 				except OSError as e:  # HACK
-						self.Dlog("encountered OSError: {}".format(e))
+						self.log("encountered OSError: {}".format(e))
 						connected = False
 
 				if connected and not conn:
-					csConnector_s.close()  # very important to close this
+					pool.terminate()
 					pool.close()
 					pool.join()
-					self.controlSock = csConnector_c  # FIXME: not sure if this will be destroyed
+					del pool # i really dont want orphan processes
+					csConnector_s.close()  # very important to close this
+					self.controlSock = csConnector_c  
+					
 					self.log("connectPartner success via connect!")
 					return True
 
@@ -229,7 +246,8 @@ class VidStreamer:
 					del csConnector_c  # close open sockets
 					self.log("connectPartner success via serving!")
 					pool.close()
-					pool.join()
+					pool.terminate()
+					del pool # i really dont want orphan processes
 					return True  # only connects to one client
 
 				# else implied
@@ -261,10 +279,10 @@ class VidStreamer:
 		# this is wrapper is basically only just so that this can be more readable
 		self.controlSock.send(message)
 
-
-	def init_infoExchange(self): #FIXME #TODO
+	def init_infoExchange(self):
 		"""initial info exchange over controlsocket about things like name, resolution, and orientation via VidStreamerData struct"""
 		# send metadata about self
+		self.log(" ")
 		try:
 			# pickle.dumps serializes into a byte object instead of a file
 			self.cSockSend(pickle.dumps(self.selfMetaData))
@@ -288,23 +306,26 @@ class VidStreamer:
 
 	def initComps(self, **kwargs):
 		""" initializes the server and client of the vidstreamer and connects them """
+		self.log(" ")
+		if not self.controlSock: self.connectPartner(kwargs.get("timeout", None))
+			
+		if not self.pMetaData: self.init_infoExchange()
 
-		if not self.controlSock:
-			self.connectPartner(kwargs.get("timeout", None))
-			self.init_infoExchange()
-
-		asPool=Pool(processes=2)
+		asyncPool = Pool(processes=1)
 		self.SerBase.initializeSock()
-		ret=asPool.apply_async(self.SerBase.serve())
+		serve_ret = asyncPool.apply_async(self.SerBase.serve,(True))
 
 		self.CliBase.initializeSock()
 		self.CliBase.connectSock()
-		while not ret.successful: #blocking
-			pass
-		asPool.close()
-		asPool.join()
+		self.SerBase.clientAddr, self.SerBase.conn = serve_ret.get()
+		asyncPool.close()
+		asyncPool.join()
+		_dlog("dlog1: "+str(self.SerBase.clientAddr))
+		del asyncPool
 
-	def defaultCamFunc(self):
+		
+
+	def defaultCamFunc(self, *args):
 		"""Funcional wrapper for self.cam.image @property"""
 		return self.cam.image
 
@@ -316,6 +337,12 @@ class VidStreamer:
 			self.serverThread = ServerThread(self.SerBase, self.defaultCamFunc)
 
 		self.clientThread = ClientThread(self.CliBase, self.frameQueue)
+		
+		self.serverThread.setName("Server_Thread")
+		self.serverThread.start()
+
+		self.clientThread.setName("Client0_Thread")
+		self.clientThread.start()
 
 	# TODO: implement pausing via a listener on another thread
 	# TODO: implement zerorpc here:
