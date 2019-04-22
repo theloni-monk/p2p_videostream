@@ -200,7 +200,7 @@ class VidStreamer:
 				connected = False
 
 				try:
-						#csConnector_c.connect((self.partner_ip, self.comm_port))
+						csConnector_c.connect((self.partner_ip, self.comm_port))
 						connected = True
 
 				except ConnectionRefusedError:
@@ -212,6 +212,8 @@ class VidStreamer:
 
 				if connected and not conn:
 					csConnector_s.close()  # very important to close this
+					pool.close()
+					pool.join()
 					self.controlSock = csConnector_c  # FIXME: not sure if this will be destroyed
 					self.log("connectPartner success via connect!")
 					return True
@@ -226,6 +228,8 @@ class VidStreamer:
 					self.connected = True
 					del csConnector_c  # close open sockets
 					self.log("connectPartner success via serving!")
+					pool.close()
+					pool.join()
 					return True  # only connects to one client
 
 				# else implied
@@ -279,17 +283,15 @@ class VidStreamer:
 		self.log("recieved pMetaData, partner name: {}".format(self.pMetaData.name))
 
 		# check if data is null:
-		try:
-			if len(self.pMetaData) == 0:
-				pass
-		except Exception as e:
+		if self.pMetaData.name == None:
 			self.close(Exception("Partner sent Null data for self.pData"))
 
 	def initComps(self, **kwargs):
 		""" initializes the server and client of the vidstreamer and connects them """
 
-		if not self.connected:
+		if not self.controlSock:
 			self.connectPartner(kwargs.get("timeout", None))
+			self.init_infoExchange()
 
 		asPool=Pool(processes=2)
 		self.SerBase.initializeSock()
@@ -299,9 +301,8 @@ class VidStreamer:
 		self.CliBase.connectSock()
 		while not ret.successful: #blocking
 			pass
-
-		while not ret.successful: # blocking
-			pass
+		asPool.close()
+		asPool.join()
 
 	def defaultCamFunc(self):
 		"""Funcional wrapper for self.cam.image @property"""
