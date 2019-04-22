@@ -3,7 +3,7 @@ import cv2
 
 cam = camera.Camera(mirror=True)
 
-
+print("camera res: {}".format(cam.resolution))
 def retrieveImage(cam, imgResize):
     """Basic function for retrieving camera data, for getFrame"""
     img = cv2.resize(cam.image, (0, 0), fx=imgResize[0], fy=imgResize[1])
@@ -21,7 +21,7 @@ def startStream(serv, getFrame, args=[]):
 
 
 resize_cof = (1, 1)
-server = streamserver.Server("68.104.5.207", port=5000, verbose=True, elevateErrors=True)
+server = streamserver.Server("192.168.0.36", port=5000, verbose=True, elevateErrors=True)
 server.initializeSock()
 server.s.settimeout(15)
 server.serve()

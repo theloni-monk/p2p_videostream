@@ -54,7 +54,7 @@ class Client:
             else:
                 return data
 
-    def initializeSock(self, sock=None, **kwargs):
+    def initializeSock(self, sock=None):
         """Setter for self.s socket or makes blank socket"""
         if not sock:
             # creates socket

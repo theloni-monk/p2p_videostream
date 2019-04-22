@@ -1,21 +1,21 @@
 from .. import VidStreamer
 import cv2
 import sys
+if __name__ == '__main__':
+    streamer= VidStreamer.VidStreamer("192.168.0.36", port = 5000, verbose = True)
+    if not streamer.connectPartner(): 
+        print("connectPartner failed")
+        sys.exit(0)
+    streamer.init_infoExchange()
+    streamer.initComps()
+    streamer.beginStreaming()
+    print("test1")
+    cv2.namedWindow("feed", cv2.WINDOW_NORMAL)
 
-streamer= VidStreamer.VidStreamer("10.50.2.254", verbose = True)
-if not streamer.connectPartner(): 
-    print("connectPartner failed")
-    sys.exit(0)
-streamer.init_infoExchange()
-streamer.initComps()
-streamer.beginStreaming()
-print("test1")
-cv2.namedWindow("feed", cv2.WINDOW_NORMAL)
+    while True:
+            img= streamer.getCurrFrame()
+            cv2.imshow("feed", img)
 
-while True:
-        img= streamer.getCurrFrame()
-        cv2.imshow("feed", img)
-
-        if cv2.waitKey(1) == 27:
-            streamer.close(destroy=True)
-            break  # esc to quit
+            if cv2.waitKey(1) == 27:
+                streamer.close(destroy=True)
+                break  # esc to quit

@@ -1,7 +1,7 @@
 from ..streambase import streamclient
 import cv2
 
-demoClient = streamclient.Client("10.50.2.254", port=80, verbose=True)
+demoClient = streamclient.Client("192.168.0.36", port=5000, verbose=True)
 
 
 def startStream(Cli):

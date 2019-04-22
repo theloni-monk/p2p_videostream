@@ -1,7 +1,7 @@
 # multithreading:
 import threading
-from multiprocessing import Pool  # for async connecting
 from queue import Queue
+from multiprocessing import Pool  # for async connecting
 
 # streaming:
 from .streambase import *
@@ -156,23 +156,24 @@ class VidStreamer:
 		csConnector_c.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 		csConnector_s.listen(10)
-		csConnector_s.setblocking(0)  # set the socket to non-blocking
+		#csConnector_s.setblocking(0)  # set the socket to non-blocking
 
 		stime = time.time() # for chekcing for timeout
 
 		conn = None
 		clientAddr = None
-		pool = Pool(processes=1)
+		pool = Pool(processes=2)
 		while True:
 			try:
-				accept_ret = pool.apply_async(csConnector_s.accept, ())  # accept async HOPEFULLY
+				accept_ret = pool.apply_async(csConnector_s.accept, ())  # accept async HOPEFULLY #NOTE: this actually works
 			except Exception as e:
 				self.log(e)
 			self.log("serving")
 
-			# TODO: make sure this works and the partners actually are on the same socket
+			serverReached=False
 			while True:
-				if time.time() < stime + timeout:
+				if time.time() > stime + timeout:
+					self.log("timed out")
 					return False # return false on timeout
 
 				waittime = random.randint(1, 150)/10
@@ -183,14 +184,13 @@ class VidStreamer:
 					pass
 
 				self.log("checking server for connection")
-				serverReached=False
 				try:
 					serverReached = accept_ret.successful()  # see if the server was connected to
 				except Exception:
 					pass
 				if serverReached:
 					conn, clientAddr = accept_ret.get()
-					break
+					break # exit to the 
 				
 				# if the server wasn't reached try to connect to the partner
 				self.log("attempting connection")
@@ -206,22 +206,21 @@ class VidStreamer:
 					self.Dlog("encountered OSError: {}".format(e))
 					connected = False
 
-				if connected and not conn:
-					csConnector_s.close()  # very important to close this
-					self.controlSock = csConnector_c  # FIXME: not sure if this will be destroyed
+				if connected and not serverReached:
+					del csConnector_s # very important to close this
+					self.controlSock = csConnector_c
 					self.log("connectPartner success via connect!")
 					return True
 
-			if conn:  # if we got here it means the server was reached so the if is redundent but its more readable this way
+			if serverReached:  # if we got here it means the server was reached so the if is redundent but its more readable this way
 				self.log("server reached")
 				if clientAddr[0] == self.partner_ip: # make sure we actually connect to our partner
-
-					self.controlSock = conn  # FIXME: not sure if this will get destroyed when scope is left
+					self.controlSock = conn
 					self.clientAddr = clientAddr
 					self.log('ControlSock, connected to ' +
 							 self.clientAddr[0] + ':' + str(self.clientAddr[1]))
 					self.connected = True
-					csConnector_c.close()  # close open sockets
+					del csConnector_c  # close open sockets
 					self.log("connectPartner success via serving!")
 					return True  # only connects to one client
 
@@ -232,7 +231,6 @@ class VidStreamer:
 				# this will return it to the top where it will do an async accept call again
 
 	# TODO: create control command listener thread.
-	# TODO: make use client csock
 	def cSockRecv(self, size=1024):
 		# NOTE: this just works
 		"""Recieves a single frame
@@ -253,7 +251,7 @@ class VidStreamer:
 
 	def cSockSend(self, message):
 		# this is wrapper is basically only just so that this can be more readable
-		netutils.send_msg(self.controlSock, message)
+		self.controlSock.send(message)
 
 
 	def init_infoExchange(self):
@@ -271,29 +269,33 @@ class VidStreamer:
 		# recieve partner metadata
 		try:
 			# unserialize recieved metadata
-			self.pMetaData = pickle.loads(self.cSockRecv())
+			self.pMetaData = pickle.loads(self.cSockRecv(4096))
 		except Exception as e:
 			raise e
-		self.log("Recieved self.pData")
+		self.log("recieved pMetaData, partner name: {}".format(self.pMetaData.name))
 
 		# check if data is null:
-		try:
-			if len(self.pMetaData) == 0:
-				pass
-		except Exception as e:
+		if self.pMetaData.name == None:
+			
 			self.close(Exception("Partner sent Null data for self.pData"))
 
+
+	#TODO: FIXME
 	def initComps(self, **kwargs):
-		""" initializes the server and client of the vidstreamer and connects them """
+		""" blocking, initializes the server and client of the vidstreamer and connects them """
 
-		if not self.connected:
+		if not self.controlSock:
 			self.connectPartner(kwargs.get("timeout", None))
+			self.init_infoExchange()
 
+		asPool=Pool(processes=2)
 		self.SerBase.initializeSock()
-		self.SerBase.serveNoBlock()
+		ret=asPool.apply_async(self.SerBase.serve())
 
 		self.CliBase.initializeSock()
 		self.CliBase.connectSock()
+		while not ret.successful: #blocking
+			pass
 
 	def defaultCamFunc(self):
 		"""Funcional wrapper for self.cam.image @property"""

@@ -59,13 +59,14 @@ class Server:
                      clientAddr[0] + ':' + str(clientAddr[1]))
 
     def serveNoBlock(self, callback=None):
-        """Without blocking, waits for client at self.incoming_ip to connect, if callback given calls callback with arg True on success or False on failure
+        """DEPRACATED Without blocking, waits for client at self.incoming_ip to connect, if callback given calls callback with arg True on success or False on failure
         Returns: False on failure, True on success"""
 
         self.log("Searching for client at {}...".format(self.incoming_ip))
         if not self.s:
             self.initializeSock()
         # wait for client to query the server for a connection
+        self.s.setblocking(0)
         conn, clientAddr = self.s.accept()
         if clientAddr[0] == self.incoming_ip:
             self.conn = conn
