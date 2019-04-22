@@ -160,12 +160,11 @@ class VidStreamer:
 		csConnector_s = socket.socket(socket.AF_INET)
 		csConnector_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		csConnector_s.bind((self.ip_local, self.comm_port))
-
+		csConnector_s.listen(10)
+		
 		csConnector_c = socket.socket(socket.AF_INET)
 		csConnector_c.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-		csConnector_s.listen(10)
-		#csConnector_s.setblocking(0)  # set the socket to non-blocking
+		csConnector_c.settimeout(timeout/2)
 
 		stime = time.time() # for chekcing for timeout
 
@@ -231,7 +230,7 @@ class VidStreamer:
 					del pool # i really dont want orphan processes
 					csConnector_s.close()  # very important to close this
 					self.controlSock = csConnector_c  
-					
+					self.controlSock.settimeout(None)
 					self.log("connectPartner success via connect!")
 					return True
 
@@ -313,7 +312,7 @@ class VidStreamer:
 
 		asyncPool = Pool(processes=1)
 		self.SerBase.initializeSock()
-		serve_ret = asyncPool.apply_async(self.SerBase.serve,(True))
+		serve_ret = asyncPool.apply_async(self.SerBase.serve,(True,))
 
 		self.CliBase.initializeSock()
 		self.CliBase.connectSock()
@@ -321,9 +320,7 @@ class VidStreamer:
 		asyncPool.close()
 		asyncPool.join()
 		_dlog("dlog1: "+str(self.SerBase.clientAddr))
-		del asyncPool
-
-		
+		del asyncPool	
 
 	def defaultCamFunc(self, *args):
 		"""Funcional wrapper for self.cam.image @property"""

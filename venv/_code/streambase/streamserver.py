@@ -95,7 +95,10 @@ class Server:
         self.C = zstandard.ZstdCompressor()
         self.prevFrame = img
         np.save(self.Sfile, self.prevFrame)
-        send_msg(self.conn, self.C.compress(self.Sfile.getvalue()))
+        inF = self.C.compress(self.Sfile.getvalue())
+        send_msg(self.conn, inF)
+        self.log("Sent {}KB (frame {})".format(
+            int(len(inF)/1000), "initial"))
         self.frameno = 0
 
     def sendFrame(self, img):
