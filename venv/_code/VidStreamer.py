@@ -1,7 +1,7 @@
 # multithreading:
 import threading
 from queue import Queue
-from multiprocessing import Pool # for async connecting
+from multiprocessing import Pool # for async connecting #TODO: optimize with threadpool
 # NOTE: it would be better to use a ThreadPool but python is dumb and ThreadPool still isn't fully implemnted or documented
 
 # streaming:
@@ -36,22 +36,30 @@ class ServerThread(threading.Thread):
 		self.server = vidserver
 		self.getFrame = frameFunc
 		self.getFrameArgs = frameFuncArgs
+		self._close_event=threading.Event()
+
+	def close(self):
+		self._close_event.set()
+
+	def is_closed(self):
+		return self._close_event.is_set()
 
 	def run(self):
 		Er = None
 		_dlog("serverThread begun running")
-
 		# self.getFrame(self.getFrameArgs) is ugly but is how we get camera images
 		self.server.initializeStream(self.getFrame(self.getFrameArgs)) 
-
 		_dlog("server in serverThread initialized")
+
 		while True:
-			try:
-				
-				self.server.sendFrame(self.getFrame(self.getFrameArgs)) 
-			except Exception as e:
-				Er = e
-				break
+			if self.is_closed():
+				return None
+			else:
+				try:
+					self.server.sendFrame(self.getFrame(self.getFrameArgs), self.server._DIFFMIN) 
+				except Exception as e:
+					Er = e
+					break
 		raise Er
 
 
@@ -63,6 +71,13 @@ class ClientThread(threading.Thread):
 		threading.Thread.__init__(self)
 		self.client = vidclient
 		self.fQueue = fQueue
+		self._close_event=threading.Event()
+	
+	def close(self):
+		self._close_event.set()
+
+	def is_closed(self):
+		return self._close_event.is_set()
 
 	def run(self):
 		Er = None
@@ -70,11 +85,14 @@ class ClientThread(threading.Thread):
 		self.client.initializeStream()
 		_dlog("client in clientThread initialized")
 		while True:
-			try:
-				self.fQueue.put(self.client.decodeFrame())
-			except Exception as e:
-				Er = e
-				break
+			if self.is_closed():
+				return None
+			else:
+				try:
+					self.fQueue.put(self.client.decodeFrame())
+				except Exception as e:
+					Er = e
+					break
 		raise Er
 
 
@@ -116,7 +134,7 @@ class VidStreamer:
 			self.selfMetaData.ip_public = load(
 				urlopen('https://api.ipify.org/?format=json'))['ip']
 		except Exception as e:
-			print(str(e))
+			self.log(str(e))
 			raise Exception("No Internet connection available!")
 
 		self.selfMetaData.cameraResolution = self.cam.resolution
@@ -164,7 +182,7 @@ class VidStreamer:
 		
 		csConnector_c = socket.socket(socket.AF_INET)
 		csConnector_c.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		csConnector_c.settimeout(timeout/2)
+		csConnector_c.settimeout(timeout/4)
 
 		stime = time.time() # for chekcing for timeout
 
@@ -174,7 +192,7 @@ class VidStreamer:
 		while True:
 			serverReached=False
 			try:
-				accept_ret = pool.apply_async(csConnector_s.accept, ())  # accept async HOPEFULLY
+				accept_ret = pool.apply_async(csConnector_s.accept, ())  # accept async 
 
 			except Exception as e:
 				self.log(e)
@@ -201,12 +219,20 @@ class VidStreamer:
 
 				# wait for a random amount of time 
 				# TODO: waittime should be more precise and computer specific
-				waittime = random.randint(1, 150)/10	
+				waittime = random.randint(1, 700)/100	
 				wtime_end = time.time()+waittime
 				self.log("VidStreamer control sock connector waiting")
 				while time.time() < wtime_end:
 					pass
 
+				self.log("VidStreamer control sock connector checking server for connection")
+				try:
+					serverReached = accept_ret.successful()  # see if the server was connected to
+				except Exception:
+					pass
+				if serverReached:
+					conn, clientAddr = accept_ret.get()
+					break # exit to the server logic
 				
 				# if the server wasn't reached try to connect to the partner
 				self.log("VidStreamer control sock connector attempting connection")
@@ -351,9 +377,11 @@ class VidStreamer:
 		"""Closes all: serverThread, clientThread, controlSock, CliBase, and SerBase"""
 		destroy = kwargs.get("destroy", False)
 		if self.serverThread:
+			self.serverThread.close()
 			self.serverThread.join()
 		if self.clientThread:
-			self.clientThread.join()
+			self.clientThread.close()
+			self.serverThread.join()
 
 		if self.controlSock:
 			self.controlSock.close()
