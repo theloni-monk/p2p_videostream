@@ -2,9 +2,20 @@ import socket
 from .netutils import send_msg
 import numpy as np
 import io #BytesIO object replaces tempfile functionality
-# from tempfile import TemporaryFile
-import zstandard
+import zstandard as zstd
 import atexit
+
+import numba as nb # jit optimization
+
+#BIG TODO: optimize streaming code
+
+@nb.njit(parallel = True, fastmath = True)
+def diffReplace(img, diffMin): #TODO: FIXME client side
+    img = img.ravel()        
+    for idx in range(img.size):
+        if img[idx] < diffMin:
+            img[idx] = 0
+
 
 
 class Server:
@@ -20,9 +31,17 @@ class Server:
         self.s = None
         self.conn = "hello"
         self.clientAddr = "clownFish"
+
         atexit.register(self.close)
         self.error=None
         self.elevateErrors = kwargs.get("elevateErrors", False)
+
+        self._DIFFMIN=kwargs.get("_diffmin", 0)
+
+        # the compressor cant be pickled for multiprocessing so it has to be initialized later
+        self.cParams = None # zstd.ZstdCompressionParameters.from_level(5, threads=4)      
+        self.C = None # zstd.ZstdCompressor(compression_params=cParams)
+
         self.log("Server ready")
 
     def log(self, m):
@@ -91,35 +110,42 @@ class Server:
 
     def initializeStream(self, img):
         """Sends initial frame of compression and initializes compressor and io"""
-        self.Sfile = io.BytesIO()
-        self.C = zstandard.ZstdCompressor()
+        Tfile = io.BytesIO()
+        self.cParams = zstd.ZstdCompressionParameters.from_level(5, threads=4)
+        self.C = zstd.ZstdCompressor(compression_params=self.cParams)
         self.prevFrame = img
-        np.save(self.Sfile, self.prevFrame)
-        inF = self.C.compress(self.Sfile.getvalue())
+        np.save(Tfile, self.prevFrame)
+        inF = self.C.compress(Tfile.getvalue())
+        #inF = encodeDiff(img, self.C)
+
         send_msg(self.conn, inF)
         self.log("Sent {}KB (frame {})".format(
             int(len(inF)/1000), "initial"))
         self.frameno = 0
 
-    def sendFrame(self, img):
+    def sendFrame(self, img, diffMin=0):
         """Sends single frame with intra-frame compression over an initialized stream"""
-        try:
-            self.prevFrame
-        except AttributeError:
-            self.initializeStream(img)
+        #try:
+        #    self.prevFrame
+        #except AttributeError:
+        #    self.initializeStream(img) #IM GETTING RID OF THE CHECK FOR OPTIMIZATION
+        #PLZ BE SAFE
 
-        # instanciate temporary bytearray to send later
-        Tfile = io.BytesIO()
-
-        # use numpys built in save function to diff with prevframe
+        # use numpys built in save function serialize the diff with prevframe
         # because we diff it it will compress more
-        np.save(Tfile, img-self.prevFrame)
-
-        # compress it into even less bytes
-        b = self.C.compress(Tfile.getvalue())
-
+        diff = img - self.prevFrame
         # saving prev frame
         self.prevFrame = img
+
+        # for jittery cameras it might be worth it to only send only send signifigant changes to ease network strain
+        if diffMin>0:
+            diffReplace(img, diffMin) # detremental at higher resolution
+
+        Tfile = io.BytesIO()
+        np.save(Tfile, diff) # serialize frame from numpy array to bytes
+        # return compressed bytes
+        b = self.C.compress(Tfile.getvalue())
+        
 
         # send it
         try:
@@ -127,6 +153,7 @@ class Server:
         except Exception as e:
             self.log("failed to send message")
             self.close(e)
+
         self.log("Sent {}KB (frame {})".format(
             int(len(b)/1000), self.frameno))  # debugging
         self.frameno += 1

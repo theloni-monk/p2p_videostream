@@ -2,7 +2,7 @@ import socket
 from .netutils import recv_msg
 import cv2
 import numpy as np
-import zstandard
+import zstandard as zstd
 import io
 import atexit
 
@@ -20,7 +20,7 @@ class Client:
         self.connected = False
 
         # instanciate a decompressor which we can use to decompress our frames
-        self.D = zstandard.ZstdDecompressor()
+        self.D = zstd.ZstdDecompressor()
 
         # when the user exits or the stream crashes it closes so there arn't orfaned processes
         atexit.register(self.close)
@@ -107,9 +107,9 @@ class Client:
             self.close(Exception("Server sent Null data"))
 
         # load decompressed image
-            # np.load creates an array from the serialized data
         img = (np.load(io.BytesIO(self.D.decompress(r)))  # decompress the incoming frame difference
-               + self.prevFrame).astype("uint8")  # add the difference to the previous frame and convert to uint8 for safety
+                + self.prevFrame).astype("uint8")  # add the difference to the previous frame and convert to uint8 for safety
+
 
         self.log("recieved {}KB (frame {})".format(
             int(len(r)/1000), self.frameno))  # debugging
