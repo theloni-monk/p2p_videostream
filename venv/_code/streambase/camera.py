@@ -1,16 +1,23 @@
 import cv2
 import numpy as np
-from multiprocessing import Process, Pipe
-
 
 class Camera():
     def __init__(self, **kwargs):
         self.mirror = kwargs.get("mirror", False)
+        
         # captures from the first webcam it sees by default
         self.cap = cv2.VideoCapture(kwargs.get("device", 0))
-        self.resolution = (self.cap.get(cv2.CAP_PROP_FRAME_WIDTH),
-                           self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
         self.output = None
+
+    def set_res(self, width, height):
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+    @property
+    def resolution(self):
+        return (self.cap.get(cv2.CAP_PROP_FRAME_WIDTH),
+                self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     @property
     def frameNum(self):
@@ -35,4 +42,8 @@ if __name__ == "__main__":
     print(cam.frameNum)
     print(cam.fps)
     print(cam.resolution)
-    cv2.imwrite("test/test_image.png", cam.image)
+    cam.set_res(640, 480)
+    print(cam.resolution)
+    for i in range(10):
+        cv2.imwrite("test_image.png", cam.image)
+    print(cam.frameNum)
