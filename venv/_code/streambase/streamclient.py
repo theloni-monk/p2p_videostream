@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import zstandard as zstd
 import io
-import atexit
+import numba as nb
 
 
 class Client:
@@ -22,10 +22,8 @@ class Client:
         # instanciate a decompressor which we can use to decompress our frames
         self.D = zstd.ZstdDecompressor()
 
-        # when the user exits or the stream crashes it closes so there arn't orfaned processes
-        atexit.register(self.close)
         self.error=None
-        self.elevateErrors = kwargs.get("elevateErrors", False)
+        self.elevateErrors = kwargs.get("elevateErrors", True)
 
         self.prevFrame = None
         self.frameno = None
@@ -99,12 +97,14 @@ class Client:
             r = recv_msg(self.s)  # gets the frame difference
         except Exception as e:
             self.close(e)
+            return None
 
         try:
             if len(r) == 0:
                 pass
         except Exception as e:
             self.close(Exception("Server sent Null data"))
+            return None
 
         # load decompressed image
         img = (np.load(io.BytesIO(self.D.decompress(r)))  # decompress the incoming frame difference

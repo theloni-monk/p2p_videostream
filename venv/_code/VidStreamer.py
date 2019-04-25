@@ -12,6 +12,7 @@ import pickle
 # misc:
 import random
 import time
+import numba as nb
 
 # for getting public ip:
 from json import load
@@ -47,6 +48,7 @@ class ServerThread(threading.Thread):
 	def run(self):
 		Er = None
 		_dlog("serverThread begun running")
+
 		# self.getFrame(self.getFrameArgs) is ugly but is how we get camera images
 		self.server.initializeStream(self.getFrame(self.getFrameArgs)) 
 		_dlog("server in serverThread initialized")
@@ -60,6 +62,10 @@ class ServerThread(threading.Thread):
 				except Exception as e:
 					Er = e
 					break
+
+		if self.is_closed:
+			return None
+
 		raise Er
 
 
@@ -93,6 +99,8 @@ class ClientThread(threading.Thread):
 				except Exception as e:
 					Er = e
 					break
+		if self.is_closed():
+			return None
 		raise Er
 
 
@@ -150,20 +158,18 @@ class VidStreamer:
 
 		# TODO: support multiple decoders
 		self.CliBase = streamclient.Client(
-			partner_ip, port=self.comm_port, verbose=self.verbose)
+			partner_ip, port=self.comm_port, verbose=self.verbose, elevateErrors=True)
 
 		# TODO: support sending to multiple clients
 		self.SerBase = streamserver.Server(
-			partner_ip, port=self.comm_port, verbose=self.verbose)
-
-
-		# TODO: support control command listening
-		# self.isPaused = False  # NOTE: we can just keep streaming the same pause image
-
+			partner_ip, port=self.comm_port, verbose=self.verbose, _diffmin = kwargs.get("_diffmin", 0), elevateErrors=True)
+		
 		# TODO: support multiple clients
 		self.controlSock = None
 		self.serverThread = None
 		self.clientThread = None
+
+		#TODO: FIXME make an error queue to catch thread errors
 		self.frameQueue = Queue()
 
 	def log(self, m):
@@ -382,6 +388,7 @@ class VidStreamer:
 		if self.clientThread:
 			self.clientThread.close()
 			self.serverThread.join()
+			#print("AHHH")
 
 		if self.controlSock:
 			self.controlSock.close()
@@ -395,10 +402,10 @@ class VidStreamer:
 				del self.CliBase
 
 		if(E != None):
-			print("Stream closed on Error\n" + str(E))
+			print("Vidstreamer closed on Error\n" + str(E))
 		else:
-			self.log("Stream closed")
+			self.log("Vidstreamer closed")
 
 		if destroy:
-			self.log("Deleting self")
+			self.log("Deleting self: VidStreamer. name = {}".format(self.name))
 			del self

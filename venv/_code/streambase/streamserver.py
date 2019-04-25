@@ -3,8 +3,6 @@ from .netutils import send_msg
 import numpy as np
 import io #BytesIO object replaces tempfile functionality
 import zstandard as zstd
-import atexit
-
 import numba as nb # jit optimization
 
 #BIG TODO: optimize streaming code
@@ -32,9 +30,8 @@ class Server:
         self.conn = "hello"
         self.clientAddr = "clownFish"
 
-        atexit.register(self.close)
         self.error=None
-        self.elevateErrors = kwargs.get("elevateErrors", False)
+        self.elevateErrors = kwargs.get("elevateErrors", True)
 
         self._DIFFMIN=kwargs.get("_diffmin", 0)
 
@@ -165,7 +162,7 @@ class Server:
 
         if(E != None):
             self.error=E
-            print("Streamserver closed on Error\n" + str(E))
+            print("Streamserver closed on Error\n" + str(E)) 
             if self.elevateErrors:
                 self.log("raising error")
                 raise E
