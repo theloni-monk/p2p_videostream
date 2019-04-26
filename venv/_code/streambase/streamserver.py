@@ -38,7 +38,7 @@ class Server:
         # the compressor cant be pickled for multiprocessing so it has to be initialized later
         self.cParams = None # zstd.ZstdCompressionParameters.from_level(5, threads=4)      
         self.C = None # zstd.ZstdCompressor(compression_params=cParams)
-
+        self.isConnected = False
         self.log("Server ready")
 
     def log(self, m):
@@ -119,6 +119,7 @@ class Server:
         self.log("Sent {}KB (frame {})".format(
             int(len(inF)/1000), "initial"))
         self.frameno = 0
+        self.isConnected=True
 
     def sendFrame(self, img, diffMin=0):
         """Sends single frame with intra-frame compression over an initialized stream"""
@@ -157,17 +158,20 @@ class Server:
 
     def close(self, E=None, **kwargs):
         """Closes socket"""
-        if self.s:
-            self.s.close()
 
         if(E != None):
             self.error=E
-            print("Streamserver closed on Error\n" + str(E)) 
+            
             if self.elevateErrors:
-                self.log("raising error")
+                self.log("Streamserver is raising Error: " + str(E)) 
                 raise E
+            self.log("Streamserver closed on Error: " + str(E)) 
+
         else:
             self.log("Streamserver closed")
+        
+        if self.s:
+            self.s.close()
         
         if kwargs.get("destroy", False) == True:
             self.log("Deleting self")

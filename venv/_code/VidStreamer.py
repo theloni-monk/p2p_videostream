@@ -27,20 +27,22 @@ def _dlog(m):
 	if _DEBUG_0:
 		print(m)
 
-
+#TODO: run this on a seperate process and optimize it with cpython
 class ServerThread(threading.Thread):
 	"""Thread that offloads initialization, encoding, and sending frames"""
 
-	def __init__(self, vidserver, frameFunc, frameFuncArgs=None):
+	def __init__(self, vidserver, errorQ, frameFunc, frameFuncArgs=None):
 		_dlog("TestST")
 		threading.Thread.__init__(self)
 		self.server = vidserver
 		self.getFrame = frameFunc
 		self.getFrameArgs = frameFuncArgs
 		self._close_event=threading.Event()
+		self.erQ=errorQ
 
-	def close(self):
+	def close(self, E=None):
 		self._close_event.set()
+		if E: self.erQ.put(E)
 
 	def is_closed(self):
 		return self._close_event.is_set()
@@ -50,37 +52,42 @@ class ServerThread(threading.Thread):
 		_dlog("serverThread begun running")
 
 		# self.getFrame(self.getFrameArgs) is ugly but is how we get camera images
-		self.server.initializeStream(self.getFrame(self.getFrameArgs)) 
+		if not self.server.isConnected:
+			self.server.initializeStream(self.getFrame(self.getFrameArgs)) 
 		_dlog("server in serverThread initialized")
 
 		while True:
 			if self.is_closed():
+				_dlog("serverthread closing")
 				return None
 			else:
 				try:
 					self.server.sendFrame(self.getFrame(self.getFrameArgs), self.server._DIFFMIN) 
+				#TODO: add some error handling here
 				except Exception as e:
+					_dlog("serverthread caught exception")
 					Er = e
 					break
 
-		if self.is_closed:
-			return None
+		self.close(Er) # Thread always closes on error because worst case senario you can usually just spin up another thread
 
-		raise Er
+		#raise Er
 
-
+#Note: this should run on a thread because it is less of a cpu bottleneck
 class ClientThread(threading.Thread):
 	"""Thread that offloads initialization, receiving, and decoding frames and puts them in given Queue"""
 
-	def __init__(self, vidclient, fQueue):
+	def __init__(self, vidclient, fQueue, errorQ):
 		_dlog("TestCT")
 		threading.Thread.__init__(self)
 		self.client = vidclient
 		self.fQueue = fQueue
+		self.erQ = errorQ
 		self._close_event=threading.Event()
 	
-	def close(self):
+	def close(self, E=None):
 		self._close_event.set()
+		if E: self.erQ.put(E)
 
 	def is_closed(self):
 		return self._close_event.is_set()
@@ -92,6 +99,7 @@ class ClientThread(threading.Thread):
 		_dlog("client in clientThread initialized")
 		while True:
 			if self.is_closed():
+				_dlog("clienttrhead closing")
 				return None
 			else:
 				try:
@@ -99,19 +107,16 @@ class ClientThread(threading.Thread):
 				except Exception as e:
 					Er = e
 					break
-		if self.is_closed():
-			return None
-		raise Er
+
+		self.close(Er)
 
 
-class VSMetaData():
-	"""Wrapper for name, ip, cameraResolution, and orientation"""
+class VSMetaData(): #TODO: make this more useful
+	"""Wrapper for name, ip"""
 
 	def __init__(self):
 		self.name = None
 		self.ip_public = None
-		self.cameraResolution = None
-		self.orientation = None  # usesless for now
 
 
 def get_localip():
@@ -129,11 +134,11 @@ def get_localip():
 class VidStreamer:
 	"""VidStreamer is a wrapper for a client and a server with a control socket to connect to other vistreamers"""
 
-	def __init__(self, partner_ip, **kwargs):
+	def __init__(self, **kwargs):
 
 		self.verbose = kwargs.get("verbose", False)
 		self.name = kwargs.get("name", "VidBot")
-		self.cam = camera.Camera()
+		self.cam = None
 
 		# metadata setup
 		self.selfMetaData = VSMetaData()
@@ -145,25 +150,17 @@ class VidStreamer:
 			self.log(str(e))
 			raise Exception("No Internet connection available!")
 
-		self.selfMetaData.cameraResolution = self.cam.resolution
-		self.selfMetaData.orientation = True  # always horizontal for now
-
 		self.pMetaData = None
 
 		self.ip_local = get_localip()
 		self.log("public ip: {}, local ip: {}".format(
 			self.selfMetaData.ip_public, self.ip_local))
-		self.partner_ip = partner_ip
+		self.partner_ip = kwargs.get("partner_ip", None)
 		self.comm_port = kwargs.get("port", 5000)
 
-		# TODO: support multiple decoders
-		self.CliBase = streamclient.Client(
-			partner_ip, port=self.comm_port, verbose=self.verbose, elevateErrors=True)
+		self.SerBase=None
+		self.CliBase=None
 
-		# TODO: support sending to multiple clients
-		self.SerBase = streamserver.Server(
-			partner_ip, port=self.comm_port, verbose=self.verbose, _diffmin = kwargs.get("_diffmin", 0), elevateErrors=True)
-		
 		# TODO: support multiple clients
 		self.controlSock = None
 		self.serverThread = None
@@ -171,11 +168,18 @@ class VidStreamer:
 
 		#TODO: FIXME make an error queue to catch thread errors
 		self.frameQueue = Queue()
+		self.errorQueue_s = Queue()
+		self.errorQueue_c = Queue()
 
 	def log(self, m):
 		"""prints if self.verbose"""
 		if self.verbose:
 			print(m)
+
+	def set_partner(self, addr):
+		"""sets partner ip and port to given address"""
+		self.partner_ip = addr[0]
+		self.port = addr[1]
 
 	def connectPartner(self, timeout=30):
 		"""blocking, randomly switches between listening and attempting to connect to self.partner_ip | 
@@ -335,14 +339,29 @@ class VidStreamer:
 		if self.pMetaData.name == None:
 			self.close(Exception("Partner sent Null data for self.pData"))
 
+	def initCam(self, resolution = (640, 480), **kwargs):
+		"""basic func to delay camera initiation so that the camera light only goes on when it is being used \n kwargs: device/0"""
+		self.cam = camera.Camera(device=kwargs.get("device", 0))
+		self.cam.set_res(resolution[0], resolution[1])
+		self.log("camera initalized")
+
+
 	def initComps(self, **kwargs):
 		""" initializes the server and client of the vidstreamer and connects them """
 		self.log(" ")
 		if not self.controlSock: self.connectPartner(kwargs.get("timeout", None))
-			
 		if not self.pMetaData: self.init_infoExchange()
+		if not self.cam: self.initCam()
 
-		asyncPool = Pool(processes=1)
+		# TODO: support multiple decoders
+		self.CliBase = streamclient.Client(
+			self.partner_ip, port=self.comm_port, verbose=self.verbose, elevateErrors=True)
+
+		# TODO: support sending to multiple clients
+		self.SerBase = streamserver.Server(
+			self.partner_ip, port=self.comm_port, verbose=self.verbose, _diffmin = kwargs.get("_diffmin", 0), elevateErrors=True)
+		
+		asyncPool = Pool(processes=1) #TODO: use threads to do this instead of a process pool
 		self.SerBase.initializeSock()
 		serve_ret = asyncPool.apply_async(self.SerBase.serve,(True,))
 
@@ -356,16 +375,17 @@ class VidStreamer:
 
 	def defaultCamFunc(self, *args):
 		"""Funcional wrapper for self.cam.image @property"""
-		return self.cam.image
+		try: return self.cam.image
+		except AttributeError: raise Exception("Camera never initalized")
 
 	def beginStreaming(self, getImg=None, args=[]):
 		"""Starts the server and client threads"""
 		if getImg:
-			self.serverThread = ServerThread(self.SerBase, getImg, args)
+			self.serverThread = ServerThread(self.SerBase,  self.errorQueue_s, getImg, args)
 		else:
-			self.serverThread = ServerThread(self.SerBase, self.defaultCamFunc)
+			self.serverThread = ServerThread(self.SerBase, self.errorQueue_s, self.defaultCamFunc)
 
-		self.clientThread = ClientThread(self.CliBase, self.frameQueue)
+		self.clientThread = ClientThread(self.CliBase, self.frameQueue, self.errorQueue_c)
 		
 		self.serverThread.setName("Server_Thread")
 		self.serverThread.start()
@@ -385,10 +405,10 @@ class VidStreamer:
 		if self.serverThread:
 			self.serverThread.close()
 			self.serverThread.join()
+
 		if self.clientThread:
 			self.clientThread.close()
 			self.serverThread.join()
-			#print("AHHH")
 
 		if self.controlSock:
 			self.controlSock.close()

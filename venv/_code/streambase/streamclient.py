@@ -27,6 +27,7 @@ class Client:
 
         self.prevFrame = None
         self.frameno = None
+        self.isConnected = False
         self.log("Client Ready")
 
     def log(self, m):
@@ -90,6 +91,7 @@ class Client:
             self.D.decompress(recv_msg(self.s))))
         self.frameno = 0
         self.log("stream initialized")
+        self.isConnected=True
 
     def decodeFrame(self):
         """Decodes single frame of data from an initialized stream"""
@@ -121,17 +123,19 @@ class Client:
 
     def close(self, E=None, **kwargs):
         """Closes socket and opencv instances"""
-        if self.s:
-            self.s.close()
 
         if(E != None):
             self.error=E
-            print("Streamclient closed on Error\n" + str(E))
             if self.elevateErrors:
+                print("Streamclient is raising Error: " + str(E))
                 raise E
+            print("Streamclient closed on Error: " + str(E))
         else:
             self.log("Streamclient closed")
         
+        if self.s:
+            self.s.close()
+
         if kwargs.get("destroy", False) == True:
             self.log("Destroying self")
             del self
