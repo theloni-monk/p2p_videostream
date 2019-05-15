@@ -1,0 +1,3 @@
+#!/Users/thelonious.cooper/Documents/Github/p2p_videostream/venv/bin/python3
+from numba.pycc import main
+main()

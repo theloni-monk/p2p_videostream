@@ -169,10 +169,10 @@ class Server:
 
         else:
             self.log("Streamserver closed")
-        
+
         if self.s:
             self.s.close()
-        
+
         if kwargs.get("destroy", False) == True:
             self.log("Deleting self")
             del self

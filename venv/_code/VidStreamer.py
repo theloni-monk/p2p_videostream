@@ -1,3 +1,6 @@
+# p2p partner class:
+from . import Partner
+
 # multithreading:
 import threading
 from queue import Queue
@@ -5,7 +8,7 @@ from multiprocessing import Pool # for async connecting #TODO: optimize with thr
 # NOTE: it would be better to use a ThreadPool but python is dumb and ThreadPool still isn't fully implemnted or documented
 
 # streaming:
-from .streambase import *
+from .streambase import camera, streamserver, streamclient
 import socket
 import pickle
 
@@ -14,12 +17,8 @@ import random
 import time
 import numba as nb
 
-# for getting public ip:
-from json import load
-from urllib.request import urlopen
-import ssl
-# HACK: this makes the urllib requrest work
-ssl._create_default_https_context = ssl._create_unverified_context
+
+#TODO: implement flask rounting to webapp, or just use rpc to transfer the image to electron process
 
 _DEBUG_0 = True
 
@@ -84,7 +83,7 @@ class ClientThread(threading.Thread):
 		self.fQueue = fQueue
 		self.erQ = errorQ
 		self._close_event=threading.Event()
-	
+
 	def close(self, E=None):
 		self._close_event.set()
 		if E: self.erQ.put(E)
@@ -107,9 +106,8 @@ class ClientThread(threading.Thread):
 				except Exception as e:
 					Er = e
 					break
-
+		
 		self.close(Er)
-
 
 class VSMetaData(): #TODO: make this more useful
 	"""Wrapper for name, ip"""
@@ -118,20 +116,7 @@ class VSMetaData(): #TODO: make this more useful
 		self.name = None
 		self.ip_public = None
 
-
-def get_localip():
-	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	try:
-		# doesn't even have to be reachable
-		s.connect(('10.255.255.255', 1))
-		IP = s.getsockname()[0]
-	except:
-		IP = '127.0.0.1'
-	finally:
-		s.close()
-	return IP
-
-class VidStreamer:
+class VidStreamer(Partner.Partner):
 	"""VidStreamer is a wrapper for a client and a server with a control socket to connect to other vistreamers"""
 
 	def __init__(self, **kwargs):
@@ -143,26 +128,14 @@ class VidStreamer:
 		# metadata setup
 		self.selfMetaData = VSMetaData()
 		self.selfMetaData.name = self.name
-		try:
-			self.selfMetaData.ip_public = load(
-				urlopen('https://api.ipify.org/?format=json'))['ip']
-		except Exception as e:
-			self.log(str(e))
-			raise Exception("No Internet connection available!")
 
 		self.pMetaData = None
-
-		self.ip_local = get_localip()
-		self.log("public ip: {}, local ip: {}".format(
-			self.selfMetaData.ip_public, self.ip_local))
-		self.partner_ip = kwargs.get("partner_ip", None)
-		self.comm_port = kwargs.get("port", 5000)
 
 		self.SerBase=None
 		self.CliBase=None
 
 		# TODO: support multiple clients
-		self.controlSock = None
+		# self.controlSock = None
 		self.serverThread = None
 		self.clientThread = None
 
@@ -170,126 +143,6 @@ class VidStreamer:
 		self.frameQueue = Queue()
 		self.errorQueue_s = Queue()
 		self.errorQueue_c = Queue()
-
-	def log(self, m):
-		"""prints if self.verbose"""
-		if self.verbose:
-			print(m)
-
-	def set_partner(self, addr):
-		"""sets partner ip and port to given address"""
-		self.partner_ip = addr[0]
-		self.port = addr[1]
-
-	def connectPartner(self, timeout=30):
-		"""blocking, randomly switches between listening and attempting to connect to self.partner_ip | 
-		Returns: False on timeout, True on connection"""
-		self.log("connectPartner called!")
-		csConnector_s = socket.socket(socket.AF_INET)
-		csConnector_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		csConnector_s.bind((self.ip_local, self.comm_port))
-		csConnector_s.listen(10)
-		
-		csConnector_c = socket.socket(socket.AF_INET)
-		csConnector_c.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		csConnector_c.settimeout(timeout/4)
-
-		stime = time.time() # for chekcing for timeout
-
-		conn = None
-		clientAddr = None
-		pool = Pool(processes=1)
-		while True:
-			serverReached=False
-			try:
-				accept_ret = pool.apply_async(csConnector_s.accept, ())  # accept async 
-
-			except Exception as e:
-				self.log(e)
-				raise e
-
-			self.log("VidStreamer control sock connector serving")
-
-			serverReached=False
-			while True:
-
-				if time.time() > stime + timeout:
-					self.log("timed out")
-					return False # return false on timeout
-
-				self.log("VidStreamer control sock connector checking server for connection")
-				try:
-					serverReached = accept_ret.successful()  # see if the server was connected to
-				except Exception:
-					pass
-				if serverReached:
-					conn, clientAddr = accept_ret.get()
-					break # exit to the server logic
-
-
-				# wait for a random amount of time 
-				# TODO: waittime should be more precise and computer specific
-				waittime = random.randint(1, 700)/100	
-				wtime_end = time.time()+waittime
-				self.log("VidStreamer control sock connector waiting")
-				while time.time() < wtime_end:
-					pass
-
-				self.log("VidStreamer control sock connector checking server for connection")
-				try:
-					serverReached = accept_ret.successful()  # see if the server was connected to
-				except Exception:
-					pass
-				if serverReached:
-					conn, clientAddr = accept_ret.get()
-					break # exit to the server logic
-				
-				# if the server wasn't reached try to connect to the partner
-				self.log("VidStreamer control sock connector attempting connection")
-				connected = False
-
-				try:
-						csConnector_c.connect((self.partner_ip, self.comm_port))
-						connected = True
-
-				except ConnectionRefusedError:
-						self.log("Connection to partner refused")
-						connected = False
-				except OSError as e:  # HACK
-						self.log("encountered OSError: {}".format(e))
-						connected = False
-
-				if connected and not conn:
-					pool.terminate()
-					pool.close()
-					pool.join()
-					del pool # i really dont want orphan processes
-					csConnector_s.close()  # very important to close this
-					self.controlSock = csConnector_c  
-					self.controlSock.settimeout(None)
-					self.log("connectPartner success via connect!")
-					return True
-
-			if serverReached:  # if we got here it means the server was reached so the if is redundent but its more readable this way
-				self.log("server reached")
-				if clientAddr[0] == self.partner_ip: # make sure we actually connect to our partner
-					self.controlSock = conn
-					self.clientAddr = clientAddr
-					self.log('ControlSock, connected to ' +
-							 self.clientAddr[0] + ':' + str(self.clientAddr[1]))
-					self.connected = True
-					del csConnector_c  # close open sockets
-					self.log("connectPartner success via serving!")
-					pool.close()
-					pool.terminate()
-					del pool # i really dont want orphan processes
-					return True  # only connects to one client
-
-				# else implied
-				conn.close()
-				self.log('Refused connection to ' +
-						 clientAddr[0] + ':' + str(clientAddr[1]))
-				# this will return it to the top where it will do an async accept call again
 
 	# TODO: create control command listener thread.
 	def cSockRecv(self, size=1024):
@@ -345,7 +198,6 @@ class VidStreamer:
 		self.cam.set_res(resolution[0], resolution[1])
 		self.log("camera initalized")
 
-
 	def initComps(self, **kwargs):
 		""" initializes the server and client of the vidstreamer and connects them """
 		self.log(" ")
@@ -397,7 +249,7 @@ class VidStreamer:
 	# TODO: implement zerorpc here:
 	def getCurrFrame(self):
 		"""Wrapper for framequeue get for zerorpc"""
-		return self.frameQueue.get()
+		return self.frameQueue.get(block = True, timeout = 15)
 
 	def close(self, E=None, **kwargs):
 		"""Closes all: serverThread, clientThread, controlSock, CliBase, and SerBase"""
