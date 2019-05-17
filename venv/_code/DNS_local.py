@@ -1,15 +1,15 @@
 import socket
 from .streambase import netutils
 from queue import Queue
-import _thread
+from threading import Thread
 
 """
 userdict looks like this:
 {'name', [addr, port]}
 """
 userdict = {}
-
-# no need for a threadList bc all threads will time out
+threadlist = []
+_stop = False
 
 def get_localip():
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -23,7 +23,7 @@ def get_localip():
 		s.close()
 	return IP
 
-def runserver(socket):
+def _runserver(socket):
 
     socket.settimeout(10)
     try:
@@ -49,39 +49,52 @@ def runserver(socket):
         return False
 
     clean_addr = str(out_addr).replace("(","").replace(")","").replace("'","")
+    #NOTE: clean_addr looks like: "xxx.xxx.xxx.xxx, ####"
     socket.send(clean_addr.encode())
 
     return True
 
-def beginServing(localip):
+def _beginServing(localip, port):
     s = socket.socket(socket.AF_INET)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.settimeout(5)
-    s.bind(localip)
+    s.bind((localip, port))
     s.listen(10)
 
     while True:
-        client = s.accept()[0]
-        _thread.start_new_thread( runserver, (client,) )
+        if _stop: return None
+
+        try: client = s.accept()[0]
+        except TimeoutError: pass
+
+        T = Thread(target = _runserver, args = (client,))
+        threadlist.append(T)
+        T.start()
 
 class DNS_local():
-    def __init__(self):
+    def __init__(self, **kwargs):
+        """Default port 8000"""
         #self.userdict = {}
+        self.verbose = kwargs.get("verbose", False)
         self.localip =  get_localip()
         self.mainThread = None
+        self.port = kwargs.get("port", 8000)
+    
+    def log(self,m):
+        if self.verbose: print(m)
 
     def begin(self):
         # this might not be a thing
-        self.mainThread = _thread.start_new_thread( beginServing, (self.localip,) )
-        
-        print("DNS started with IP:{}".format(self.localip))
+        self.mainThread = Thread(target = _beginServing, args = (self.localip, self.port,))
+        threadlist.append(self.mainThread)
+        self.mainThread.start()
+        self.log("DNS started with IP:{} on port: {}".format(self.localip, self.port))
 
     def close(self):
-        del self # joins threads?
+        self.log("closing")
+        _stop = True
+        for t in threadlist:
+            t.join()
+        self.log("DNS closed")
 
-       
 
-
-
-
-    

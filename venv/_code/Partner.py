@@ -4,7 +4,7 @@ import socket
 from json import load
 from urllib.request import urlopen
 import ssl
-# HACK: this makes the urllib requrest work
+# HACK: this makes the urllib requrest work for getting the public ip
 ssl._create_default_https_context = ssl._create_unverified_context
 
 import time
@@ -46,10 +46,15 @@ class Partner:
 
 		self.partner_ip = kwargs.get("partner_ip", None)
 		self.comm_port = kwargs.get("port", 5000)
+		self.DNS_port =  kwargs.get("DNS_port", 8000)
 		self.connected = False
 		self.controlSock = None
 
 		self.DNS_addr = kwargs.get("DNS_addr", "127.0.0.1")
+
+	def log(self, m):
+		if self.verbose:
+			print(m)
 
 	#TODO: rewrite with threading instead of async Pools
 	def connectPartner(self, timeout=30):
@@ -165,14 +170,15 @@ class Partner:
 				# this will return it to the top where it will do an async accept call again
 
 	# this will break if you try non local DNS bc cox sucks
-	def setDNS_local(self, dns):
+	def setDNS_local(self, dns, port = 8000):
 		self.DNS_addr = dns
+		self.DNS_port = port
 
 	def QueryDNS_local(self, name_req):
 		sock = socket.socket(socket.AF_INET)
 		sock.settimeout(10)
 
-		try: sock.connect(self.DNS_addr)
+		try: sock.connect((self.DNS_addr, self.DNS_port))
 		except ConnectionRefusedError: raise Exception("Unreachable DNS_addr")
 
 		try: 
@@ -186,10 +192,14 @@ class Partner:
 			raise Exception("Sending requested name to DNS_local failed")
 
 		try: 
-			addr = sock.recv(1024).split(",")
+			addr = sock.recv(1024)
 		except:
 			raise Exception("DNS_local never sent requested data")
+		
+		if addr == "No User Found":
+			raise Exception("No User Found")
 
+		addr = addr.split(",")
 		addr[1] = int(addr[1])
 
 		return addr
@@ -199,6 +209,25 @@ class Partner:
 		self.partner_ip = addr[0]
 		self.comm_port = addr[1]
 
-	def log(self, m):
-		if self.verbose:
-			print(m)
+	# TODO: create control command listener thread.
+	def recv(self, size=1024):
+		# NOTE: this just works
+		"""Recieves a single frame
+		args:
+				size: how big a frame should be
+						default: 1024
+		returns:
+				single data frame
+		"""
+		data = bytearray()
+		while 1:
+			buffer = self.controlSock.recv(size)
+			data += buffer
+			if len(buffer) == size:
+				pass
+			else:
+				return data
+
+	def send(self, message):
+		# this is wrapper is basically only just so that this can be more readable
+		self.controlSock.send(message)

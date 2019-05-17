@@ -109,6 +109,7 @@ class ClientThread(threading.Thread):
 		
 		self.close(Er)
 
+
 class VSMetaData(): #TODO: make this more useful
 	"""Wrapper for name, ip"""
 
@@ -135,37 +136,12 @@ class VidStreamer(Partner.Partner):
 		self.CliBase=None
 
 		# TODO: support multiple clients
-		# self.controlSock = None
 		self.serverThread = None
 		self.clientThread = None
 
-		#TODO: FIXME make an error queue to catch thread errors
 		self.frameQueue = Queue()
 		self.errorQueue_s = Queue()
 		self.errorQueue_c = Queue()
-
-	# TODO: create control command listener thread.
-	def cSockRecv(self, size=1024):
-		# NOTE: this just works
-		"""Recieves a single frame
-		args:
-				size: how big a frame should be
-						default: 1024
-		returns:
-				single data frame
-		"""
-		data = bytearray()
-		while 1:
-			buffer = self.controlSock.recv(size)
-			data += buffer
-			if len(buffer) == size:
-				pass
-			else:
-				return data
-
-	def cSockSend(self, message):
-		# this is wrapper is basically only just so that this can be more readable
-		self.controlSock.send(message)
 
 	def init_infoExchange(self):
 		"""initial info exchange over controlsocket about things like name, resolution, and orientation via VidStreamerData struct"""
@@ -173,7 +149,7 @@ class VidStreamer(Partner.Partner):
 		self.log(" ")
 		try:
 			# pickle.dumps serializes into a byte object instead of a file
-			self.cSockSend(pickle.dumps(self.selfMetaData))
+			self.send(pickle.dumps(self.selfMetaData))
 		except Exception as e:
 			self.log("init_infoExchange failed to send data over controlSock")
 			raise e
@@ -183,7 +159,7 @@ class VidStreamer(Partner.Partner):
 		# recieve partner metadata
 		try:
 			# unserialize recieved metadata
-			self.pMetaData = pickle.loads(self.cSockRecv(4096))
+			self.pMetaData = pickle.loads(self.recv(4096))
 		except Exception as e:
 			raise e
 		self.log("recieved pMetaData, partner name: {}".format(self.pMetaData.name))
@@ -239,10 +215,10 @@ class VidStreamer(Partner.Partner):
 
 		self.clientThread = ClientThread(self.CliBase, self.frameQueue, self.errorQueue_c)
 		
-		self.serverThread.setName("Server_Thread")
+		self.serverThread.setName("VidStreamer Server_Thread")
 		self.serverThread.start()
 
-		self.clientThread.setName("Client0_Thread")
+		self.clientThread.setName("VidStreamer Client0_Thread")
 		self.clientThread.start()
 
 	# TODO: implement pausing via a listener on another thread
@@ -260,7 +236,7 @@ class VidStreamer(Partner.Partner):
 
 		if self.clientThread:
 			self.clientThread.close()
-			self.serverThread.join()
+			self.clientThread.join()
 
 		if self.controlSock:
 			self.controlSock.close()
@@ -268,15 +244,12 @@ class VidStreamer(Partner.Partner):
 		try:
 			self.SerBase.close(destroy=True)
 			self.CliBase.close(destroy=True)
-		except AttributeError:
-			if destroy:
-				del self.SerBase
-				del self.CliBase
+		except AttributeError: pass
 
 		if(E != None):
-			print("Vidstreamer closed on Error\n" + str(E))
+			print("VidStreamer closed on Error\n" + str(E))
 		else:
-			self.log("Vidstreamer closed")
+			self.log("VidStreamer closed")
 
 		if destroy:
 			self.log("Deleting self: VidStreamer. name = {}".format(self.name))
