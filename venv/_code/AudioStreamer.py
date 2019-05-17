@@ -38,8 +38,19 @@ RATE = 44100
 
 sframes = [] 
 def record(stream):    #FIXME: unsafe
-    	while True:
-        	sframes.append(stream.read(CHUNK))
+		while True:
+			try:
+				sframes.append(stream.read(CHUNK))
+				_dlog("read mic stream frame")
+			except OSError: 
+				_dlog("encountered OSError in record")
+				PyHandle = pyaudio.PyAudio()
+				PyHandle.open(format = FORMAT,
+					channels = CHANNELS,
+					rate = RATE,
+					input = True,
+					frames_per_buffer = CHUNK,
+				)
 
 class ServerThread(threading.Thread):
 	"""Thread that offloads initialization, encoding, and sending frames"""
@@ -82,8 +93,9 @@ class ServerThread(threading.Thread):
 				_dlog("serverthread closing")
 				return None
 			if len(sframes) > 0:
-				try: udp.sendto(sframes.pop(0), (self.ip, self.port))
-				#TODO: Error handling
+				try: 
+					udp.sendto(sframes.pop(0), (self.ip, self.port))
+					_dlog("sent audio frame")
 				except Exception as e:
 					print(e)
 					Er = e
@@ -125,7 +137,9 @@ class ClientThread(threading.Thread):
 			if self.is_closed():
 				_dlog("clienttrhead closing")
 				return None
-			try: soundData, addr = udp.recvfrom(CHUNK)
+			try: 
+				soundData, addr = udp.recvfrom(CHUNK * CHANNELS * 2)
+				_dlog("recieved audio frame")
 			except Exception as e:
 				_dlog(e)
 				Er = e
@@ -148,7 +162,7 @@ class PlayerThread(threading.Thread):
 		self.stream = self.PyHandle.open(format = FORMAT,
 					channels = CHANNELS,
 					rate = RATE,
-					input = True,
+					output = True,
 					frames_per_buffer = CHUNK,
 					)
 
@@ -178,7 +192,8 @@ class PlayerThread(threading.Thread):
 				
 				while True:
 					try:
-						self.stream.write(self.frameQ.pop(), CHUNK)
+						self.stream.write(self.frameQ.get(), CHUNK)
+						_dlog("played audio frame")
 					except Exception as e:
 						_dlog(e)
 						Er = e
@@ -197,9 +212,7 @@ class ASMetaData: #TODO: make this more useful
 class AudioStreamer(Partner.Partner):
 	
 	def __init__(self, **kwargs):
-		self.verbose = kwargs.get("verbose", False)
-		self.name = kwargs.get("name", "VidBot")
-		self.mic = None #TODO: get pyaudio working
+		super().__init__(**kwargs)
 
 		# metadata setup
 		self.selfMetaData = ASMetaData()
@@ -248,8 +261,8 @@ class AudioStreamer(Partner.Partner):
 		if not self.pMetaData: self.init_infoExchange()
 	
 	def beginStreaming(self, player = True):
-		self.serverThread = ServerThread((self.partner_ip,self.comm_port), self.errorQueue_s)
-		self.clientThread = ClientThread((self.partner_ip,self.comm_port), self.frameQueue, self.errorQueue_c)
+		self.serverThread = ServerThread((self.partner_ip,self.comm_port+1), self.errorQueue_s)
+		self.clientThread = ClientThread((self.ip_local,self.comm_port+1), self.frameQueue, self.errorQueue_c)
 		if player: self.playerThread = PlayerThread(self.frameQueue, self.errorQueue_p )
 		
 		self.serverThread.setName("AudioStreamer Server0_Thread")

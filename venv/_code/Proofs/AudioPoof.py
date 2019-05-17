@@ -1,7 +1,8 @@
 from .. import AudioStreamer
 import sys
+import cv2
 
-if __name__ == "main":
+if __name__ == "__main__":
     streamer= AudioStreamer.AudioStreamer(verbose = True, _diffmin = 0)
     streamer.set_partner(("192.168.0.241", 5000))
     if not streamer.connectPartner(): 
