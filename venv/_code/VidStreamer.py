@@ -20,7 +20,7 @@ import numba as nb
 
 #TODO: implement flask rounting to webapp, or just use rpc to transfer the image to electron process
 
-_DEBUG_0 = True
+_DEBUG_0 = False#True
 
 def _dlog(m):
 	if _DEBUG_0:

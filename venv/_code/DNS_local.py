@@ -41,6 +41,11 @@ def _runserver(socket):
     except TimeoutError:
         return False
 
+
+    if name_req == "GET_ALL_USERS":
+        socket.send(str(userdict).encode())
+        return True
+
     # try to send the associated name
     try:
         out_addr = userdict[name_req]

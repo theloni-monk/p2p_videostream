@@ -4,22 +4,17 @@ from . import Partner
 # multithreading:
 import threading
 from queue import Queue
-from multiprocessing import Pool # for async connecting #TODO: optimize with threadpool
-# NOTE: it would be better to use a ThreadPool but python is dumb and ThreadPool still isn't fully implemnted or documented
 
 # streaming:
-from .streambase import camera, streamserver, streamclient
 import socket
 import pickle
+import pyaudio
 
 # misc:
 import random
 import time
 import numba as nb
 
-import pyaudio #TODO: install pyaudio
-import socket
-from threading import Thread
 
 _DEBUG_0 = True
 
@@ -35,7 +30,7 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 44100
 
-
+"""
 sframes = [] 
 def record(stream):    #FIXME: unsafe
 		while True:
@@ -45,12 +40,46 @@ def record(stream):    #FIXME: unsafe
 			except OSError: 
 				_dlog("encountered OSError in record")
 				PyHandle = pyaudio.PyAudio()
-				PyHandle.open(format = FORMAT,
+				stream = PyHandle.open(format = FORMAT,
 					channels = CHANNELS,
 					rate = RATE,
 					input = True,
 					frames_per_buffer = CHUNK,
 				)
+"""
+
+class recordThread(threading.Thread):
+	def __init__(self, sframeQ):
+		threading.Thread.__init__(self)
+		self._close_event=threading.Event()
+		self.PyHandle = pyaudio.PyAudio()
+		self.stream = self.PyHandle.open(format = FORMAT,
+										 channels = CHANNELS,
+										 rate = RATE,
+										 input = True,
+										 frames_per_buffer = CHUNK,)
+		self.sframes = sframeQ
+
+	def run(self):
+		while not self.is_closed():
+			try:
+				self.sframes.put(self.stream.read(CHUNK))
+				_dlog("read mic stream frame")
+			except OSError: 
+				_dlog("encountered OSError in record")
+				self.PyHandle = pyaudio.PyAudio()
+				self.stream = self.PyHandle.open(format = FORMAT,
+					channels = CHANNELS,
+					rate = RATE,
+					input = True,
+					frames_per_buffer = CHUNK,
+				)
+	
+	def close(self, E=None):
+		self._close_event.set()
+
+	def is_closed(self):
+		return self._close_event.is_set()
 
 class ServerThread(threading.Thread):
 	"""Thread that offloads initialization, encoding, and sending frames"""
@@ -71,12 +100,14 @@ class ServerThread(threading.Thread):
 					input = True,
 					frames_per_buffer = CHUNK,
 					)
-		
-		self.RT = Thread(target = record, args = (self.stream,))
+		self.sframes = Queue()
+		self.RT = recordThread(self.sframes)
 		self.RT.start()
+
 
 	def close(self, E=None):
 		self._close_event.set()
+		self.RT.close()
 		if E: self.erQ.put(E)
 
 	def is_closed(self):
@@ -88,22 +119,21 @@ class ServerThread(threading.Thread):
 		_dlog("serverThread begun running")
 
 		udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    
-		while True:
-			if self.is_closed():
-				_dlog("serverthread closing")
-				return None
-			if len(sframes) > 0:
+		while not self.is_closed():
+
+			if self.sframes.qsize() > 0:
 				try: 
-					udp.sendto(sframes.pop(0), (self.ip, self.port))
+					udp.sendto(self.sframes.get(), (self.ip, self.port))
 					_dlog("sent audio frame")
 				except Exception as e:
 					print(e)
 					Er = e
 					break
 
-
 		self.close(Er)
 		udp.close()
+		_dlog("serverthread closing")
+		return None
 
 
 class ClientThread(threading.Thread):
@@ -133,10 +163,7 @@ class ClientThread(threading.Thread):
 		udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		udp.bind((self.ip, self.port))
 
-		while True:
-			if self.is_closed():
-				_dlog("clienttrhead closing")
-				return None
+		while not self.is_closed():
 			try: 
 				soundData, addr = udp.recvfrom(CHUNK * CHANNELS * 2)
 				_dlog("recieved audio frame")
@@ -145,9 +172,11 @@ class ClientThread(threading.Thread):
 				Er = e
 				break
 			self.fQueue.put(soundData)
-		
+
 		self.close(Er)
 		udp.close()
+		_dlog("clienttrhead closing")
+		return None
 
 class PlayerThread(threading.Thread):
 	

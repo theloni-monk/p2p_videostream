@@ -170,9 +170,14 @@ class Partner:
 				# this will return it to the top where it will do an async accept call again
 
 	# this will break if you try non local DNS bc cox sucks
-	def setDNS_local(self, dns, port = 8000):
-		self.DNS_addr = dns
-		self.DNS_port = port
+	
+	def setDNS_local(self, dns_addr):
+		self.DNS_addr = dns_addr[0]
+		self.DNS_port = dns_addr[1]
+	
+	def connectDNS_local(self):
+		try:self.QueryDNS_local("")
+		except: pass
 
 	def QueryDNS_local(self, name_req):
 		sock = socket.socket(socket.AF_INET)
@@ -198,6 +203,9 @@ class Partner:
 		
 		if addr == "No User Found":
 			raise Exception("No User Found")
+
+		if addr[0] == "{":
+			return addr
 
 		addr = addr.split(",")
 		addr[1] = int(addr[1])
