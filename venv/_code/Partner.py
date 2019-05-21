@@ -176,7 +176,7 @@ class Partner:
 		self.DNS_port = dns_addr[1]
 	
 	def connectDNS_local(self):
-		try:self.QueryDNS_local("")
+		try: self.QueryDNS_local("_")
 		except: pass
 
 	def QueryDNS_local(self, name_req):
@@ -188,16 +188,19 @@ class Partner:
 
 		try: 
 			sock.send(self.name.encode())
+			print("sent name to dns")
 		except: #IDK what error this would be
 			raise Exception("Sending name to DNS_local failed")
 
 		try: 
 			sock.send(name_req.encode())
+			print("sent requested name to dns")
 		except:
 			raise Exception("Sending requested name to DNS_local failed")
 
-		try: 
-			addr = sock.recv(1024)
+		try:  
+			addr = sock.recv(1024).decode()
+			print("recieved data from dns: " + addr)
 		except:
 			raise Exception("DNS_local never sent requested data")
 		
