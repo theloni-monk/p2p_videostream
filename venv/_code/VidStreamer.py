@@ -122,8 +122,7 @@ class VidStreamer(Partner.Partner):
 
 	def __init__(self, **kwargs):
 
-		self.verbose = kwargs.get("verbose", False)
-		self.name = kwargs.get("name", "VidBot")
+		super().__init__(**kwargs)
 		self.cam = None
 
 		# metadata setup

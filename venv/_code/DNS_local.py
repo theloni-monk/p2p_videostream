@@ -33,7 +33,7 @@ def _runserver(socket):
 
     # add new connected users to userdict
     try: userdict[name] 
-    except KeyError: userdict[name] = socket.getsockname()
+    except KeyError: userdict[name] = socket.getpeername()
 
     # the client requests a name
     try:
